@@ -8,6 +8,8 @@
 >
 > **React/Next 2026 addendum reviewed:** 2026-08-16
 >
+> **Backend 2026 addendum reviewed:** 2026-08-26
+>
 > **Frontend animation libraries addendum reviewed:** 2026-08-17
 >
 > **Primary style:** Clean, explicit, modular, feature-oriented, secure, testable, and easy to change.
@@ -173,6 +175,7 @@ This table is a review snapshot for **new projects**. Existing projects MUST use
 | PostgreSQL | PostgreSQL 18 when supported by the provider |
 | MySQL | MySQL 8.4 LTS unless another supported version is required |
 | MongoDB | A supported stable release; no preview release in production |
+| Mongoose | Mongoose 9.x for new compatible MongoDB projects; installed project version remains authoritative |
 | Redis | A supported stable release provided by the chosen platform |
 | Prisma / Drizzle | Stable project-compatible release from the lockfile; no automatic RC/beta adoption |
 | Motion for React | Prefer the stable `motion` package for new React work; review snapshot: Motion docs v12.43.x. Existing `framer-motion` projects are not migrated during unrelated work. |
@@ -4108,6 +4111,311 @@ Repositories SHOULD:
 
 Do not create a generic repository abstraction that reduces every database to `findAll`, `findOne`, and `save` if the domain needs richer queries.
 
+### 26.5 2026 backend core architecture rule
+
+> **Added:** 2026-08-26. This subsection extends the existing backend rules without removing or replacing the earlier rules.
+
+The backend MUST be organized around **responsibilities and dependency direction**, not around arbitrary folders or fashionable architecture names.
+
+For a typical HTTP request, the preferred flow is:
+
+```text
+HTTP / queue / CLI entrypoint
+        ↓
+transport parsing
+        ↓
+runtime validation + normalization
+        ↓
+authentication context
+        ↓
+authorization / policy check
+        ↓
+controller / route adapter
+        ↓
+application use case / focused service
+        ↓
+domain rules
+        ↓
+repository / gateway ports
+        ↓
+database / cache / external integrations
+        ↓
+mapper / DTO / resource serializer
+        ↓
+transport response
+```
+
+The agent MUST keep this flow understandable even when the project uses fewer physical files.
+
+The presence of a layer does **not** require a class. A plain function or module is preferred when it expresses the responsibility clearly.
+
+### 26.6 Backend responsibility matrix
+
+Use this matrix when deciding where code belongs:
+
+| Responsibility | Preferred owner |
+|---|---|
+| Parse HTTP params/query/body | Router/controller boundary |
+| Structural runtime validation | Validation/schema module |
+| Authentication | Auth middleware / auth adapter |
+| Resource authorization | Policy / application use case |
+| Business invariant | Domain/application layer |
+| Transaction orchestration | Application service/use case |
+| Database query | Repository/data-access module |
+| Mongoose/Prisma/Drizzle model details | Persistence/infrastructure layer |
+| External HTTP SDK | Gateway/integration adapter |
+| Queue publication | Application boundary + queue adapter |
+| Response shape | Mapper/resource/DTO serializer |
+| Logging/tracing | Shared infrastructure with request context |
+| Configuration | Validated config module |
+
+A controller MUST NOT become the location where all of these responsibilities accumulate.
+
+### 26.7 Backend boundary model
+
+Agents SHOULD distinguish the following concepts when the project complexity requires them:
+
+- **Transport input**: raw HTTP/queue/event payload.
+- **Validated input DTO**: structurally valid application input.
+- **Command/query object**: application operation input.
+- **Domain model/value object**: business concepts and invariants.
+- **Persistence model**: Mongoose document, ORM record, SQL row, Mongo document representation.
+- **Output DTO/resource**: intentionally exposed response shape.
+
+These types MAY be the same in a very small CRUD service when there is no meaningful boundary difference. They MUST be separated when sharing one type would leak persistence details, secrets, authorization-sensitive fields, framework APIs, or unstable storage representation.
+
+### 26.8 Service, use-case, repository, and model rules
+
+#### Controller / route adapter
+
+Owns transport concerns only:
+
+- Reads validated values.
+- Reads authenticated request context.
+- Calls one focused application operation.
+- Maps known application errors to the established HTTP contract.
+- Sends the result.
+
+It MUST NOT:
+
+- Build complex MongoDB filters.
+- Start multi-step domain workflows directly.
+- Contain password hashing, payment logic, inventory logic, or role policies.
+- Know Mongoose session mechanics unless it is explicitly an infrastructure endpoint.
+
+#### Application service / use case
+
+Owns operation orchestration:
+
+- Enforces operation-level policy.
+- Coordinates repositories.
+- Opens transactions when atomicity requires them.
+- Calls external gateways.
+- Emits durable events after the correct persistence point.
+- Returns a domain result or purpose-specific DTO.
+
+Prefer operation names such as:
+
+```text
+CreateOrder
+CancelOrder
+ChangeUserEmail
+RecordPayment
+ApproveSupplier
+ResetPassword
+```
+
+Avoid one giant `UserService`, `OrderService`, or `AppService` containing dozens of unrelated workflows.
+
+#### Repository
+
+Owns persistence queries meaningful to a feature or domain.
+
+Good repository operations communicate intent:
+
+```ts
+findAccessibleOrderById(...)
+findUserByNormalizedEmail(...)
+reserveAvailableInventory(...)
+listOrdersForCustomer(...)
+existsByEmail(...)
+```
+
+Avoid generic repository abstractions that erase database strengths:
+
+```ts
+findAll()
+findOne()
+create()
+update()
+delete()
+```
+
+unless the project is genuinely simple CRUD and the abstraction improves rather than hides behavior.
+
+#### Persistence model
+
+Mongoose schemas/models, Prisma-generated types, Drizzle schema definitions, and raw SQL row shapes are persistence concerns.
+
+They SHOULD NOT automatically become:
+
+- Public API contracts.
+- Frontend types.
+- Domain authorization objects.
+- Queue/event schemas.
+
+### 26.9 Validation has multiple layers
+
+Do not confuse these validation responsibilities:
+
+1. **Transport validation**
+   - Types, formats, required fields, length limits, allowed enum values.
+   - Example: Zod schema for `req.body`.
+2. **Persistence validation**
+   - Storage-shape rules and database-supported constraints.
+   - Example: Mongoose schema validation, SQL `NOT NULL`, unique index.
+3. **Business validation / invariants**
+   - Rules that depend on current system state or domain behavior.
+   - Example: an order cannot ship after cancellation.
+4. **Authorization**
+   - Whether this actor may perform the operation on this resource.
+
+Passing Zod validation does not imply database validity, business validity, or authorization.
+
+Passing Mongoose validation does not imply the HTTP request was safe or authorized.
+
+### 26.10 Error taxonomy
+
+The backend SHOULD classify errors into stable categories rather than inspecting message strings throughout the application.
+
+Typical categories:
+
+```text
+ValidationError
+AuthenticationError
+AuthorizationError
+NotFoundError
+ConflictError
+RateLimitError
+ExternalServiceError
+PersistenceError
+ConfigurationError
+UnexpectedError
+```
+
+Rules:
+
+- Domain/application code SHOULD throw or return application-level errors, not Express responses.
+- Infrastructure adapters MAY translate driver/ORM errors into application errors.
+- HTTP mapping belongs at the transport boundary.
+- Unexpected internal errors MUST be logged with context and returned as a safe generic response.
+- Stable machine-readable error codes SHOULD be separate from human-readable messages.
+- Do not make clients parse database or ODM error text.
+
+### 26.11 Request context and correlation
+
+For production APIs, the backend SHOULD have one explicit request context containing only cross-cutting request data such as:
+
+```ts
+interface RequestContext {
+  requestId: string;
+  actorId?: string;
+  tenantId?: string;
+  traceId?: string;
+}
+```
+
+Rules:
+
+- Create or validate a request/correlation ID at the entrypoint.
+- Include it in structured logs and error reports.
+- Do not use request context as a hidden bag for arbitrary business state.
+- Tenant identity MUST come from authenticated/verified context, not blindly from a request body.
+- Async context mechanisms such as `AsyncLocalStorage` MAY be used for logging/tracing context when the project understands their lifecycle; explicit parameters remain preferable for domain-critical dependencies.
+
+### 26.12 Side-effect ownership
+
+Side effects include:
+
+- Email/SMS.
+- Webhooks.
+- Queue messages.
+- Search-index updates.
+- File storage.
+- Third-party API writes.
+- Notifications.
+
+Rules:
+
+- Critical database invariants MUST commit before non-transactional side effects are considered successful.
+- Do not hold a database transaction open while waiting on slow external network calls unless the consistency model explicitly requires and tolerates it.
+- Use an outbox or equivalent durable handoff when a database write and message/event publication must not diverge.
+- Retryable side effects MUST be idempotent.
+- Side-effect failures MUST have an explicit retry, compensation, or manual-recovery strategy.
+
+### 26.13 Backend dependency direction
+
+Preferred direction for a modular application:
+
+```text
+transport/http/jobs
+        ↓
+application
+        ↓
+domain
+        ↓
+ports/interfaces
+        ↑
+infrastructure implementations
+```
+
+The application/domain layer SHOULD NOT import:
+
+- Express `Request`/`Response`.
+- Mongoose models, documents, or connection globals when persistence belongs behind an application/repository boundary.
+- Prisma client singleton directly when a repository boundary is required.
+- Redis clients directly when cache behavior is an infrastructure concern.
+- Vendor SDK objects as domain models.
+
+For small applications, a lighter structure is allowed, but business logic MUST still be callable without fabricating an HTTP request.
+
+### 26.14 Backend anti-overengineering rules
+
+Agents MUST NOT introduce:
+
+- Clean Architecture folder depth for trivial CRUD with no meaningful domain rules.
+- Interfaces for every class merely to imitate another language/framework.
+- A repository that adds no meaning over a single ORM call unless it creates a useful boundary.
+- CQRS, event sourcing, DDD aggregates, mediator buses, or microservices without a concrete requirement.
+- Dependency-injection containers when simple constructor/function injection is sufficient.
+- A `BaseController`, `BaseService`, and `BaseRepository` hierarchy that hides behavior behind inheritance.
+
+Prefer the least architecture that preserves clear responsibilities and expected change.
+
+### 26.15 Backend agent pre-implementation checklist
+
+Before changing backend code, the agent MUST answer:
+
+- [ ] Which runtime/framework and exact versions are installed?
+- [ ] Which of the three approved backend structures in Section 27 is this repository using?
+- [ ] Where does transport validation occur?
+- [ ] Where is authoritative authorization enforced?
+- [ ] Where does business logic currently live?
+- [ ] Which module owns the data being changed?
+- [ ] Which database and persistence library are used?
+- [ ] Is the operation read-only or mutating?
+- [ ] Does it require one write or multiple atomic writes?
+- [ ] What concurrency conflict is possible?
+- [ ] What indexes support the new query?
+- [ ] Could the query become unbounded?
+- [ ] What fields may be returned to the caller?
+- [ ] What side effects occur and when?
+- [ ] What errors are expected versus unexpected?
+- [ ] What unit/integration/E2E coverage is required?
+
+If a material answer is unknown, inspect the repository and version-matched documentation before implementing instead of guessing.
+
+
 ---
 
 ## 27. Preferred Backend Folder Structure
@@ -4186,6 +4494,456 @@ app/
 ```
 
 Do not create directories only because they appear here. Use them when they represent real responsibilities.
+
+### 27.4 Three approved Node.js / Express backend structures
+
+There are **three approved default structures** for Node.js/Express projects. The agent MUST choose based on real complexity and MUST follow the existing repository when it already has a coherent structure.
+
+Do not mix all three structures inside one codebase without an explicit migration plan.
+
+#### 27.4.1 Structure A — Simple Layered / MVC-style API
+
+Use for:
+
+- Small APIs.
+- MVPs.
+- Internal tools.
+- Straightforward CRUD.
+- Teams that need the simplest obvious organization.
+
+Suggested structure:
+
+```text
+src/
+├── app.ts
+├── server.ts
+├── config/
+│   ├── env.ts
+│   └── index.ts
+├── routes/
+│   ├── index.ts
+│   ├── user.routes.ts
+│   └── product.routes.ts
+├── controllers/
+│   ├── user.controller.ts
+│   └── product.controller.ts
+├── services/
+│   ├── user.service.ts
+│   └── product.service.ts
+├── repositories/
+│   ├── user.repository.ts
+│   └── product.repository.ts
+├── models/
+│   ├── user.model.ts
+│   └── product.model.ts
+├── schemas/
+│   ├── user.schema.ts
+│   └── product.schema.ts
+├── middlewares/
+│   ├── auth.middleware.ts
+│   ├── error.middleware.ts
+│   └── validate.middleware.ts
+├── mappers/
+├── utils/
+├── constants/
+├── types/
+└── tests/
+```
+
+Rules:
+
+- Routes register endpoints and middleware only.
+- Controllers translate HTTP to application calls.
+- Services own business workflows.
+- Repositories own persistence queries.
+- Models own Mongoose/ORM persistence definitions.
+- Runtime request schemas remain separate from database schemas when they represent different trust boundaries.
+
+Do **not** use Structure A once global `controllers/`, `services/`, and `repositories/` folders contain dozens of unrelated domains and navigating one feature requires jumping across the entire repository.
+
+#### 27.4.2 Structure B — Feature-First Modular API — **preferred default**
+
+This is the preferred default for most medium and growing Express APIs, especially **Express + TypeScript + MongoDB + Mongoose** projects.
+
+Use for:
+
+- Multiple business features.
+- Teams expected to grow the application.
+- APIs where each feature has controllers, validation, persistence, and tests.
+- Projects where feature ownership and local reasoning matter.
+
+Suggested root:
+
+```text
+src/
+├── app/
+│   ├── create-app.ts
+│   ├── register-routes.ts
+│   └── server.ts
+├── config/
+│   ├── env.ts
+│   ├── logger.ts
+│   └── index.ts
+├── modules/
+│   ├── auth/
+│   ├── users/
+│   ├── products/
+│   └── orders/
+├── infrastructure/
+│   ├── database/
+│   ├── cache/
+│   ├── queue/
+│   └── external/
+├── shared/
+│   ├── errors/
+│   ├── auth/
+│   ├── http/
+│   ├── validation/
+│   └── types/
+├── jobs/
+├── observability/
+└── tests/
+```
+
+A typical feature:
+
+```text
+src/modules/users/
+├── user.routes.ts
+├── user.controller.ts
+├── user.service.ts
+├── user.repository.ts
+├── user.model.ts
+├── user.validation.ts
+├── user.mapper.ts
+├── user.types.ts
+├── user.constants.ts
+├── user.errors.ts
+├── user.policy.ts
+├── user.test.ts
+└── index.ts
+```
+
+As the feature grows, expand **inside the feature** instead of creating more global dumping grounds:
+
+```text
+src/modules/users/
+├── http/
+│   ├── user.routes.ts
+│   └── user.controller.ts
+├── application/
+│   ├── create-user.ts
+│   ├── update-user.ts
+│   └── list-users.ts
+├── persistence/
+│   ├── user.repository.ts
+│   └── mongoose/
+│       ├── user.schema.ts
+│       └── user.model.ts
+├── validation/
+│   ├── create-user.schema.ts
+│   └── update-user.schema.ts
+├── policies/
+│   └── user.policy.ts
+├── mappers/
+│   └── user.mapper.ts
+├── types/
+│   └── user.types.ts
+└── index.ts
+```
+
+This structure matches the same engineering philosophy used on the frontend: **feature-local code stays local, complex responsibilities are separated, and the connections between them remain obvious.**
+
+#### 27.4.3 Structure C — Clean / Hexagonal Modular Architecture
+
+Use only when justified by meaningful domain complexity, multiple transports/persistence adapters, long-lived business rules, or high testing/isolation requirements.
+
+Use for:
+
+- Complex financial/order/inventory workflows.
+- Multiple HTTP, queue, CLI, or event entrypoints sharing use cases.
+- Multiple database/external provider adapters.
+- Strong domain modeling.
+- Systems expected to outlive infrastructure choices.
+
+Suggested feature:
+
+```text
+src/modules/orders/
+├── domain/
+│   ├── entities/
+│   ├── value-objects/
+│   ├── services/
+│   ├── events/
+│   └── errors/
+├── application/
+│   ├── commands/
+│   ├── queries/
+│   ├── use-cases/
+│   ├── dto/
+│   └── ports/
+├── adapters/
+│   ├── http/
+│   │   ├── order.routes.ts
+│   │   ├── order.controller.ts
+│   │   └── order.validation.ts
+│   ├── persistence/
+│   │   ├── mongoose-order.repository.ts
+│   │   └── order.mapper.ts
+│   └── integrations/
+├── infrastructure/
+│   └── mongoose/
+│       ├── order.schema.ts
+│       └── order.model.ts
+└── index.ts
+```
+
+Dependency direction:
+
+```text
+adapters/infrastructure → application → domain
+```
+
+The domain MUST NOT import Express, Mongoose, Prisma, Redis, or vendor SDK types.
+
+Structure C is **not** automatically more professional. It is professional only when its boundaries solve real complexity.
+
+### 27.5 Structure selection matrix
+
+| Situation | Preferred structure |
+|---|---|
+| Tiny API / prototype / very simple CRUD | A — Layered |
+| Most production Express APIs | B — Feature-First Modular |
+| Express + MongoDB + Mongoose growing product | B — Feature-First Modular |
+| Complex business workflows with multiple adapters | C — Clean/Hexagonal Modular |
+| Existing coherent repository | Existing structure first |
+| Unsure | Start with B, keep it shallow, deepen only complex modules |
+
+The agent MUST NOT migrate A → B or B → C during unrelated feature work.
+
+### 27.6 Preferred Express + MongoDB + Mongoose module structure
+
+For the stack currently emphasized by this constitution, the preferred medium/large feature layout is:
+
+```text
+src/modules/products/
+├── http/
+│   ├── product.routes.ts
+│   └── product.controller.ts
+├── application/
+│   ├── create-product.ts
+│   ├── update-product.ts
+│   ├── get-product.ts
+│   └── list-products.ts
+├── persistence/
+│   ├── product.repository.ts
+│   └── mongoose/
+│       ├── product.schema.ts
+│       └── product.model.ts
+├── validation/
+│   ├── create-product.schema.ts
+│   ├── update-product.schema.ts
+│   ├── product-query.schema.ts
+│   └── product-param.schema.ts
+├── policies/
+│   └── product.policy.ts
+├── mappers/
+│   └── product.mapper.ts
+├── types/
+│   └── product.types.ts
+├── constants/
+│   └── product.constants.ts
+├── product.errors.ts
+├── product.test.ts
+└── index.ts
+```
+
+A simpler module MAY remain flat until the number of files or responsibilities justifies subdirectories.
+
+### 27.7 Root folder meanings for Node APIs
+
+#### `app/`
+
+Owns application bootstrap and composition:
+
+- Create Express/Fastify app.
+- Register middleware/plugins.
+- Register top-level routes.
+- Error/not-found boundary.
+- Does not own business features.
+
+#### `config/`
+
+Owns validated configuration:
+
+- Environment parsing.
+- Feature flags/config constants.
+- Runtime-specific configuration.
+
+Do not read raw `process.env` from feature code.
+
+#### `modules/`
+
+Owns business capabilities. Feature-specific files SHOULD remain here.
+
+#### `infrastructure/`
+
+Owns reusable technical adapters:
+
+- Database connection.
+- Redis.
+- Queue client.
+- Object storage.
+- Email provider.
+- External SDK configuration.
+
+#### `shared/`
+
+Contains truly cross-feature code with stable semantics only.
+
+Good examples:
+
+- Base application errors.
+- Auth context types.
+- Request ID helpers.
+- Pagination contract.
+- Generic validated config utilities.
+
+Bad examples:
+
+- Random business helpers.
+- `common.service.ts`.
+- Feature DTOs.
+- Product/order/user constants.
+
+#### `jobs/`
+
+Owns process-level scheduled/worker entrypoints. Business behavior called by jobs SHOULD still live in feature application modules.
+
+#### `observability/`
+
+Owns logger/tracing/metrics configuration, not domain analytics rules.
+
+### 27.8 Cross-module dependency rules
+
+Modules SHOULD communicate through intentional public APIs.
+
+Preferred:
+
+```ts
+import { getUserById } from '@/modules/users';
+```
+
+when `users/index.ts` exposes a stable application contract.
+
+Avoid deep cross-feature imports such as:
+
+```ts
+import { UserModel } from '@/modules/users/persistence/mongoose/user.model';
+```
+
+from another business module unless that persistence coupling is explicitly part of the architecture.
+
+If Orders needs Users data frequently, prefer one of:
+
+- A users application query.
+- A narrow repository/query port.
+- A purpose-specific read model.
+- Deliberate shared database query at an infrastructure boundary when performance requires it and ownership is documented.
+
+Do not create HTTP calls between modules inside the same monolith.
+
+### 27.9 Shared-code promotion rule
+
+Code SHOULD be promoted from a feature into `shared/` only when:
+
+1. At least two unrelated modules need the same concept.
+2. The semantics are truly the same.
+3. The public contract is stable enough to name.
+4. Moving it reduces duplicated knowledge rather than merely duplicated syntax.
+
+Do not build a shared abstraction after the first occurrence.
+
+### 27.10 Backend folder anti-patterns
+
+Avoid:
+
+```text
+src/helpers/
+src/common/
+src/misc/
+src/managers/
+src/services/everything.service.ts
+src/controllers/50-unrelated-files
+src/models/all-models.ts
+src/utils/database.ts  # database access disguised as a utility
+```
+
+Also avoid:
+
+- `index.ts` barrels that export every internal model and create circular dependencies.
+- Repository files that contain HTTP response logic.
+- Controller files that import ten models directly.
+- Mongoose models imported across unrelated modules without an ownership decision.
+- Schema files combining Zod HTTP schemas and Mongoose persistence schemas just because both use the word “schema”.
+
+### 27.11 Test placement rules
+
+Use one consistent strategy:
+
+**Co-located feature tests**
+
+```text
+modules/users/
+├── user.service.ts
+├── user.service.test.ts
+└── ...
+```
+
+or **mirrored test tree**
+
+```text
+tests/
+├── integration/users/
+├── integration/orders/
+└── e2e/
+```
+
+The project MAY combine:
+
+- Unit tests co-located with pure modules.
+- Integration/E2E tests in a top-level test tree.
+
+Do not separate tests so far from feature ownership that behavior becomes difficult to discover.
+
+### 27.12 Backend structure migration rule
+
+Architecture growth SHOULD be incremental:
+
+```text
+simple route
+  → controller + service
+  → feature module
+  → repository boundary
+  → split application use cases
+  → domain/ports/adapters only where justified
+```
+
+Do not create the final enterprise structure before the application has the complexity that needs it.
+
+### 27.13 Backend structure agent checklist
+
+Before creating a backend folder or moving code, the agent MUST answer:
+
+- [ ] Which of Structure A/B/C is already used?
+- [ ] Is the new file feature-specific or cross-feature?
+- [ ] What responsibility does the new folder own?
+- [ ] Is the structure becoming easier to navigate?
+- [ ] Could this remain a local file instead of a new abstraction?
+- [ ] Does the proposed import direction preserve module ownership?
+- [ ] Are persistence details leaking across modules?
+- [ ] Is a migration outside the requested task being introduced?
+
 
 ---
 
@@ -4273,6 +5031,237 @@ export async function createOrderController(
 - Do not use default error output in production.
 - Do not place database queries directly in route registration files.
 - Do not depend on middleware order that is undocumented or untested.
+
+### 29.5 2026 Express 5 source-of-truth rule
+
+> **Review snapshot:** 2026-08-26. Express 5.2.1 is the current npm `latest` release at review time. The repository's installed and security-patched version remains authoritative.
+
+Express is intentionally unopinionated about folder structure. Therefore:
+
+- Follow Section 27 for this constitution's architecture defaults.
+- Follow installed Express 5 documentation for framework behavior.
+- Do not copy Express 4 workarounds into Express 5 without verifying they are still necessary.
+- Do not upgrade Express during unrelated feature work unless required by security/correctness.
+
+### 29.6 Express 5 async error handling
+
+Express 5 automatically forwards rejected Promises from async route handlers and middleware to the error pipeline.
+
+Preferred:
+
+```ts
+router.get('/:userId', async (req, res) => {
+  const user = await getUser(req.params.userId);
+  res.json({ data: user });
+});
+```
+
+If `getUser()` rejects or the handler throws, Express 5 routes the error to error-handling middleware.
+
+Rules:
+
+- Do not add an `asyncHandler()` wrapper to every Express 5 route merely because an older Express 4 template used one.
+- A wrapper MAY remain when it adds real behavior such as tracing, typed context, or a project-standard contract.
+- Errors thrown inside detached callbacks/timers or unreturned asynchronous work are not magically owned by the route; handle them at the correct async boundary.
+- The final error middleware MUST use `(err, req, res, next)`.
+- Do not send a response and then continue executing a code path that can call `next(err)` unexpectedly.
+
+### 29.7 Separate app creation from server startup
+
+Preferred:
+
+```text
+src/app/create-app.ts
+src/app/server.ts
+```
+
+`create-app.ts` SHOULD:
+
+- Instantiate Express.
+- Register middleware.
+- Register routes.
+- Register not-found/error handlers.
+- Return the app without opening a port.
+
+`server.ts` SHOULD:
+
+- Validate startup configuration.
+- Connect required infrastructure.
+- Create the app.
+- Call `listen()`.
+- Install graceful shutdown handling.
+
+This separation allows route integration tests to use the application without binding a network port.
+
+### 29.8 Router-per-module pattern
+
+Feature routing SHOULD stay close to the feature:
+
+```ts
+export function createProductRouter(deps: ProductHttpDeps): Router {
+  const router = Router();
+
+  router.get(
+    '/',
+    validate(productListSchema),
+    deps.controller.list,
+  );
+
+  router.post(
+    '/',
+    requireAuth,
+    validate(createProductSchema),
+    deps.controller.create,
+  );
+
+  return router;
+}
+```
+
+Rules:
+
+- Route files describe HTTP composition, not business workflows.
+- Route-specific middleware order MUST be obvious from registration.
+- Avoid one enormous `routes.ts` containing every endpoint in the application.
+- Mount routers under explicit version/resource paths according to the API contract.
+
+### 29.9 Express request validation boundary
+
+Validate each source independently:
+
+- `params`.
+- `query`.
+- `body`.
+- Important headers.
+- Uploaded file metadata/content according to Section 36.
+
+Preferred flow:
+
+```text
+raw request
+   ↓
+validation middleware
+   ↓
+typed validated data
+   ↓
+controller
+```
+
+Do not let controllers repeatedly parse `Number(req.query.page)`, validate ObjectIds, or normalize email addresses ad hoc across routes.
+
+Validation middleware SHOULD expose a typed validated result through the project's established request/context mechanism rather than mutating many arbitrary request fields.
+
+### 29.10 Express security baseline
+
+Production Express applications SHOULD explicitly address:
+
+- Supported, non-vulnerable Express version.
+- TLS termination.
+- Security headers such as Helmet or equivalent policy.
+- Strict body/upload size limits.
+- Safe cookie/session settings when used.
+- Brute-force/rate limiting for authentication and expensive endpoints.
+- Dependency security review.
+- Open-redirect prevention.
+- CORS allowlists where browser cross-origin access is required.
+- Reduced framework fingerprinting where appropriate.
+
+Do not treat `helmet()` or CORS middleware as a replacement for authorization, validation, CSRF controls, or secure deployment configuration.
+
+### 29.11 `trust proxy` rule
+
+`app.set('trust proxy', ...)` affects client IP, protocol, secure-cookie behavior, and proxy-derived request properties.
+
+Rules:
+
+- Configure it from the actual deployment topology.
+- Do not blindly set `trust proxy = true` from a tutorial.
+- Verify which upstream proxies overwrite forwarding headers.
+- Rate limiting and IP-based security controls MUST use the same trusted-proxy model.
+
+### 29.12 Body parser and payload rules
+
+- Set explicit JSON/urlencoded limits according to endpoint requirements.
+- Use route-specific larger limits only where required.
+- Preserve raw request bodies for webhook signature verification when the provider requires exact bytes.
+- Do not parse enormous payloads into memory when streaming is the appropriate design.
+- Reject unsupported content types deliberately.
+
+### 29.13 Authentication context rule
+
+Authentication middleware SHOULD establish a verified actor context once.
+
+Example concept:
+
+```ts
+interface AuthContext {
+  actorId: string;
+  tenantId?: string;
+  sessionId?: string;
+  permissions: readonly string[];
+}
+```
+
+Controllers/application services SHOULD use verified context instead of re-decoding tokens independently.
+
+Resource authorization still belongs in policy/application logic.
+
+### 29.14 Express response rules
+
+- Return narrow DTOs/resources.
+- Do not call `res.json(mongooseDocument)` or `res.json(prismaRecord)` automatically.
+- Avoid leaking stack traces and persistence error details.
+- Define consistent JSON error shape.
+- Set status explicitly for create/accepted/no-content operations.
+- Never return secrets, password hashes, refresh-token digests, internal provider metadata, or hidden tenant fields.
+
+### 29.15 Express performance rules
+
+Optimize architecture before micro-benchmarks:
+
+1. Remove N+1 database access.
+2. Add correct indexes.
+3. Bound request sizes and pagination.
+4. Avoid CPU-heavy synchronous work on the event loop.
+5. Stream large responses/files.
+6. Cache only where freshness/ownership is defined.
+7. Apply compression at the correct proxy/application layer.
+8. Measure latency percentiles and database time separately.
+
+Do not migrate from Express to another framework solely to solve a database/query-design bottleneck.
+
+### 29.16 Express integration testing
+
+Use Supertest or the project-equivalent integration harness against the app factory.
+
+Test at least:
+
+- Route validation.
+- Authentication/authorization.
+- Error mapping.
+- Not-found behavior.
+- Database effects.
+- Response DTO field allowlists.
+- Pagination limits.
+- Rate-limit behavior where critical.
+
+Avoid mocking controllers/services so aggressively that the route wiring itself is never tested.
+
+### 29.17 Express anti-hallucination checklist
+
+Before writing Express code, the agent MUST confirm:
+
+- [ ] Exact Express version.
+- [ ] Express 5 or legacy Express 4 behavior?
+- [ ] Current middleware order.
+- [ ] Existing validation library/pattern.
+- [ ] Existing error contract.
+- [ ] Existing auth/request-context mechanism.
+- [ ] Actual proxy deployment before changing `trust proxy`.
+- [ ] Whether the repository already uses an async wrapper and why.
+- [ ] Whether the endpoint needs streaming/raw body/special limits.
+- [ ] Which module owns the route and persistence operations.
+
 
 ---
 
@@ -4755,6 +5744,178 @@ Every index increases storage and write cost. Review query plans for critical qu
 - Do not create a new connection per request.
 - Monitor pool wait time and saturation.
 
+### 38.6 Relational modeling process
+
+For a new relational feature, model in this order:
+
+1. Identify business entities and ownership.
+2. Identify stable identifiers.
+3. Identify required versus optional values.
+4. Map one-to-one, one-to-many, and many-to-many relationships.
+5. Define database constraints.
+6. Define common read/write query shapes.
+7. Design indexes from those queries.
+8. Define transaction/concurrency boundaries.
+9. Define archival/deletion lifecycle.
+10. Define migration and rollback/roll-forward strategy.
+
+The ORM schema is not a substitute for this process.
+
+### 38.7 Database constraints are part of correctness
+
+Use the database to enforce invariants it can reliably own:
+
+- Primary keys.
+- `NOT NULL`.
+- Unique constraints.
+- Foreign keys.
+- Stable `CHECK` constraints.
+- Exclusion constraints where the chosen database supports and the domain requires them.
+
+Rules:
+
+- Do not rely only on `SELECT`-then-insert application checks for uniqueness; concurrent requests can race.
+- Map unique/foreign-key conflicts to stable application errors.
+- Choose `ON DELETE`/`ON UPDATE` actions deliberately; do not accept ORM defaults without reviewing domain behavior.
+- Avoid application-level relation emulation when native foreign keys are available and appropriate, unless the architecture has a documented reason.
+
+### 38.8 Normalization and denormalization
+
+Default to a normalized relational model for authoritative transactional data.
+
+Denormalize only when a concrete read/performance requirement justifies it and document:
+
+- Source of truth.
+- Update mechanism.
+- Transaction consistency behavior.
+- Repair/rebuild process.
+- Staleness tolerance.
+
+Do not duplicate customer/product/order facts across tables merely to avoid writing joins.
+
+### 38.9 Transaction design
+
+Transactions SHOULD protect business invariants, not wrap every service method automatically.
+
+Rules:
+
+- Keep transaction scopes short.
+- Do not perform slow remote HTTP calls while holding row locks unless unavoidable and designed for.
+- Read rows with the locking semantics required by the workflow.
+- Use consistent lock ordering to reduce deadlock risk.
+- Handle deadlock/serialization retry only where the operation is safe to retry.
+- Choose isolation level from anomaly requirements, not by always selecting the strongest level.
+
+### 38.10 PostgreSQL isolation awareness
+
+For PostgreSQL, `READ COMMITTED` is the normal default, while `REPEATABLE READ` and `SERIALIZABLE` provide stronger guarantees with different retry/concurrency implications.
+
+The agent MUST understand the anomaly being prevented before changing isolation level.
+
+Do not claim that a transaction automatically prevents lost updates, overselling, double booking, or stale reads; the actual query/lock/constraint design determines correctness.
+
+### 38.11 Relational index design
+
+An index proposal MUST name the query it supports.
+
+Review:
+
+- Equality predicates.
+- Join predicates.
+- Sort order.
+- Range conditions.
+- Cardinality/selectivity.
+- Pagination cursor.
+- Covering needs.
+- Write frequency.
+
+Rules:
+
+- Composite column order matters.
+- PostgreSQL multicolumn B-tree indexes are generally most efficient when leading columns match the most useful equality conditions before later range/sort needs.
+- Use partial indexes only when the predicate matches a meaningful stable workload subset.
+- Avoid speculative indexes for every column.
+- Review query plans with production-representative data for critical paths.
+- An index that never supports a real query is operational debt.
+
+### 38.12 Foreign-key index nuance
+
+Primary key and unique constraints generally create supporting uniqueness indexes in relational databases such as PostgreSQL.
+
+Do not assume every foreign-key column automatically receives the ideal lookup index for your workload. Add indexes based on child lookup/delete/update query patterns and measured plans.
+
+### 38.13 Relational pagination rules
+
+For high-volume or frequently changing tables, prefer keyset/cursor pagination.
+
+Example ordering contract:
+
+```text
+ORDER BY created_at DESC, id DESC
+cursor = (created_at, id)
+```
+
+Rules:
+
+- Ordering MUST be deterministic.
+- Cursor columns SHOULD be indexed according to the query.
+- Offset pagination remains acceptable for small admin screens and bounded data.
+- Do not expose unbounded `limit`.
+
+### 38.14 Relational read-model rules
+
+Not every read path needs hydrated domain entities.
+
+For list/report/search endpoints:
+
+- Select only required columns.
+- Use joins/aggregates in the database when efficient.
+- Return read DTOs directly from a query/repository where appropriate.
+- Do not load a large entity graph merely to serialize five fields.
+
+### 38.15 Relational migration rules
+
+Production schema changes MUST consider live data and concurrent old/new application versions.
+
+Prefer expand/contract for risky changes:
+
+1. Add backward-compatible schema.
+2. Deploy code that can handle old/new representation.
+3. Backfill in bounded batches if needed.
+4. Switch reads/writes.
+5. Verify.
+6. Remove old schema in a later deployment.
+
+Do not combine a large blocking migration with unrelated feature deployment without review.
+
+### 38.16 Relational ORM boundary rule
+
+ORM convenience MUST NOT hide database behavior from the agent.
+
+Before changing a critical query, inspect:
+
+- Generated SQL when available.
+- Number of queries.
+- Selected columns.
+- Join strategy.
+- Transaction boundary.
+- Index support.
+- Lock behavior for concurrent mutations.
+
+### 38.17 Relational database agent checklist
+
+- [ ] What database/version is installed?
+- [ ] What constraint owns uniqueness/integrity?
+- [ ] What query shapes will be added?
+- [ ] Which indexes support them?
+- [ ] Does the write need a transaction?
+- [ ] What race can occur under concurrency?
+- [ ] What isolation/locking behavior is required?
+- [ ] Is pagination bounded and deterministic?
+- [ ] Is the migration safe for existing data?
+- [ ] Does the ORM generate efficient SQL?
+
+
 ---
 
 ## 39. PostgreSQL Rules
@@ -4794,6 +5955,89 @@ Every index increases storage and write cost. Review query plans for critical qu
 - Enforce validation in the database and application where supported.
 - Do not allow unbounded document, array, key, or cache growth.
 - Define consistency expectations for every cross-document operation.
+
+### 41.1 NoSQL does not mean no schema
+
+A flexible-schema database still requires an intentional data model.
+
+For every collection/document/key design, define:
+
+- Expected document shape.
+- Required fields.
+- Ownership/aggregate boundary.
+- Read patterns.
+- Write patterns.
+- Growth bounds.
+- Indexes.
+- Consistency expectations.
+- Retention/deletion behavior.
+
+Agents MUST NOT use `Mixed`, arbitrary JSON blobs, or schemaless writes merely to avoid modeling decisions.
+
+### 41.2 Access-pattern-first modeling
+
+For document databases, design around the operations the application performs most often.
+
+Before choosing embed/reference/duplication, list:
+
+```text
+reads:
+- fetch product + variants
+- list orders for customer
+- show last 20 events
+
+writes:
+- change product price
+- append order event
+- update inventory reservation
+```
+
+A model that looks aesthetically normalized but causes multiple network round trips for every core read may be inferior to a bounded aggregate document.
+
+### 41.3 Denormalized-data ownership
+
+When data is duplicated, the module MUST document:
+
+- Canonical source.
+- Which fields are copied.
+- When copies update.
+- Whether stale values are acceptable.
+- How failed propagation is retried.
+- How inconsistencies are repaired.
+
+Do not duplicate mutable data casually.
+
+### 41.4 Unbounded growth rule
+
+Never design unbounded:
+
+- Embedded arrays.
+- Redis lists/sets/streams.
+- MongoDB event histories inside one forever-growing document.
+- Arbitrary metadata maps controlled by users.
+
+Use separate collections, buckets, pagination, TTL, archival, or capped designs as appropriate.
+
+### 41.5 NoSQL query-safety rule
+
+- Allowlist queryable fields.
+- Allowlist sort fields/directions.
+- Bound regex/search behavior.
+- Prevent user-controlled operators.
+- Bound aggregation stages and result sizes.
+- Define timeouts/max execution where the driver/platform supports them for expensive public queries.
+
+### 41.6 NoSQL consistency rule
+
+For each multi-document workflow, explicitly choose:
+
+- Eventual consistency.
+- Compensating updates.
+- Transactional consistency.
+- Single-document aggregate redesign.
+
+Do not discover the consistency model accidentally after production bugs.
+
 
 ---
 
@@ -4841,6 +6085,483 @@ MongoDB transactions are available but have cost. They SHOULD NOT compensate for
 - Avoid middleware hooks that hide critical cross-system side effects.
 - Use lean queries for read-only data when appropriate and understood.
 - Do not expose ODM documents directly to API clients.
+
+### 42.6 2026 MongoDB schema-design process
+
+MongoDB's official guidance starts schema design from workload and relationships rather than from copying an SQL model.
+
+For a new collection, the agent MUST walk through:
+
+1. Identify frequent operations and latency-sensitive paths.
+2. Map relationships and ownership.
+3. Decide embed versus reference.
+4. Define document validation/application schema.
+5. Create indexes for frequent query shapes.
+6. Verify write amplification and document growth.
+7. Decide whether any cross-document invariant needs a transaction.
+8. Test with representative document counts and distributions.
+
+### 42.7 Embed versus reference decision matrix
+
+Prefer **embed** when:
+
+- Child data belongs exclusively to the parent aggregate.
+- Parent and child are read together most of the time.
+- Child count has a known practical bound.
+- Single-document atomicity is valuable.
+- The embedded data does not need an independent lifecycle/query identity.
+
+Prefer **reference** when:
+
+- The entity is shared by many aggregates.
+- The child collection can grow without a safe bound.
+- Independent updates are frequent.
+- Independent querying/indexing is important.
+- Many-to-many relationships dominate.
+- Duplicating the entity would create difficult synchronization.
+
+A hybrid model MAY duplicate selected immutable/read-optimized fields while retaining a canonical reference, but the synchronization contract MUST be documented.
+
+### 42.8 MongoDB atomicity and transaction rules
+
+A single-document MongoDB write is atomic at the document level. Use that property when an aggregate can be modeled safely inside one document.
+
+Use multi-document transactions when a business invariant genuinely spans documents/collections and eventual consistency is not acceptable.
+
+Rules:
+
+- Transactions require a replica set or supported sharded deployment.
+- Transactions add cost and SHOULD NOT replace good document modeling.
+- Keep transaction work small and bounded.
+- Do not perform remote HTTP calls inside a database transaction.
+- Do not parallelize operations inside the same Mongoose transaction/session with `Promise.all`, `Promise.race`, or similar patterns; Mongoose documents this as unsupported/undefined behavior.
+- Design idempotent retry behavior where transaction retry can occur.
+
+### 42.9 MongoDB index design
+
+Indexes MUST come from query shapes.
+
+For every new index, document at least one query such as:
+
+```js
+{ tenantId, status, createdAt: { $lt: cursorDate } }
+.sort({ createdAt: -1, _id: -1 })
+```
+
+Then design the compound index around actual equality/sort/range needs.
+
+Rules:
+
+- Use MongoDB's ESR (Equality, Sort, Range) guidance as a starting framework for compound indexes.
+- Equality fields generally come before fields used for sort/range according to the real query shape.
+- Compound indexes support prefixes; do not create redundant single-field indexes automatically when a compound prefix already serves the query.
+- Indexes improve reads but add storage and write cost.
+- Review `$indexStats`, query plans, profiler/query statistics, or Atlas tooling where available.
+- Remove unused indexes only after measured evidence and safe operational review.
+
+### 42.10 MongoDB uniqueness and integrity
+
+Use unique indexes for true business uniqueness.
+
+Examples:
+
+- User email within a tenant.
+- External provider event ID.
+- Idempotency key scoped to actor/operation.
+
+Do not implement uniqueness solely with:
+
+```text
+findOne() → if absent → insert()
+```
+
+because concurrent requests can race.
+
+Map duplicate-key errors to a stable application `ConflictError` or equivalent.
+
+Database schema validation MAY complement Mongoose/application validation for high-integrity collections.
+
+### 42.11 MongoDB pagination
+
+For large collections, prefer stable cursor pagination over deep `skip()`/offset pagination.
+
+Typical cursor:
+
+```text
+(createdAt, _id)
+```
+
+Rules:
+
+- Sort order MUST be deterministic.
+- Cursor fields SHOULD have a matching compound index.
+- Validate and decode cursors at the boundary.
+- Never expose unbounded limits.
+- Offset pagination remains acceptable for small bounded admin datasets.
+
+### 42.12 MongoDB aggregation rules
+
+Use aggregation pipelines when the database can efficiently perform filtering/grouping/join-like work that would otherwise require transferring excessive data into Node.js.
+
+Rules:
+
+- Put selective `$match` stages as early as semantics allow.
+- Project only needed fields.
+- Ensure filter/sort stages can use appropriate indexes.
+- Bound `$lookup`, `$unwind`, grouping, and result sizes for public endpoints.
+- Do not build arbitrary aggregation stages directly from user JSON.
+- For complex pipelines, keep pipeline construction in a repository/query module with tests.
+
+### 42.13 Mongoose is an ODM, not a relational ORM
+
+Mongoose maps JavaScript/TypeScript application models to MongoDB documents and provides schemas, casting, validation, middleware, query helpers, and model APIs.
+
+Agents MUST NOT apply relational ORM assumptions blindly to Mongoose:
+
+- There are no database foreign keys like PostgreSQL.
+- `populate()` is application/ODM population, not a relational foreign-key guarantee.
+- MongoDB document design remains primary.
+- Mongoose schema validation is not a replacement for HTTP runtime validation or database-level uniqueness.
+
+> **Review snapshot:** Mongoose 9 is the current major line at review time. Always inspect the installed version and compatibility table before using version-specific APIs.
+
+### 42.14 Preferred Mongoose persistence structure
+
+For Structure B projects:
+
+```text
+modules/users/
+├── persistence/
+│   ├── user.repository.ts
+│   └── mongoose/
+│       ├── user.schema.ts
+│       └── user.model.ts
+├── validation/
+│   ├── create-user.schema.ts   # Zod/API validation
+│   └── update-user.schema.ts
+└── ...
+```
+
+Rules:
+
+- `*.schema.ts` under `persistence/mongoose` means Mongoose persistence schema.
+- `validation/*.schema.ts` means transport/application runtime schema.
+- Keep names/location explicit so agents do not confuse the two.
+- A small project MAY combine the Mongoose schema and model in `user.model.ts` when separation adds no value.
+
+### 42.15 Mongoose schema rules
+
+A Mongoose schema SHOULD define storage-level behavior intentionally:
+
+- Required fields.
+- Field types.
+- Defaults.
+- Enumerated storage values where stable.
+- Timestamps when needed.
+- Index declarations.
+- Strict behavior.
+- Serialization transforms only when persistence-level transformation is truly appropriate.
+
+Avoid:
+
+- Huge `Mixed` fields for core business data.
+- Hidden remote side effects inside getters/setters.
+- Hundreds of lines of business workflow inside schema methods/hooks.
+- Secrets selected by default if most queries do not need them.
+
+### 42.16 Mongoose validation boundary
+
+Mongoose validation runs as part of document validation/save behavior, but **update validators are not automatically enabled for update operations**.
+
+Rules:
+
+- HTTP input MUST still be validated before reaching persistence.
+- Business invariants MUST still be enforced in application/domain code and/or database constraints where applicable.
+- When using `updateOne`, `updateMany`, or `findOneAndUpdate`, explicitly decide whether `runValidators: true` is required.
+- Understand that update validators have different semantics/caveats from full document validation and only apply to supported updated paths/operators.
+- Do not assume Mongoose validation protects against every malformed query/update operator.
+
+For complex updates where document middleware/full validation semantics matter, loading the document and using `save()` MAY be clearer.
+
+For atomic concurrent updates, a query-level atomic update MAY be more correct; validate and test accordingly.
+
+### 42.17 Mongoose query-filter safety
+
+Mongoose documentation specifically warns against passing user-defined objects directly as query filters.
+
+Forbidden:
+
+```ts
+await User.find(req.query);
+await User.updateMany(req.body.filter, req.body.update);
+```
+
+Prefer explicit filters:
+
+```ts
+const filter = {
+  tenantId: ctx.tenantId,
+  email: input.email,
+};
+
+await User.find(filter).setOptions({ sanitizeFilter: true });
+```
+
+Rules:
+
+- Allowlist filter fields and operators.
+- Validate ObjectIds/IDs before query construction according to API semantics.
+- Use `sanitizeFilter` where appropriate as defense-in-depth, not as a replacement for allowlisting.
+- Consider `requireFilter: true` or equivalent guards for dangerous destructive/update operations so an accidentally empty filter cannot affect the entire collection.
+- Never let a client override authoritative tenant/owner filters.
+
+### 42.18 Mongoose `lean()` rules
+
+`lean()` skips Mongoose document hydration and returns plain objects. It can reduce memory/CPU for read-only paths.
+
+Good candidates:
+
+- API list endpoints.
+- Read-only detail endpoints.
+- Reporting queries.
+- Cache-fill reads.
+
+Use only when the code does **not** require Mongoose document behavior such as:
+
+- Change tracking.
+- `save()`.
+- Document middleware.
+- Getters/setters that are relied upon.
+- Defaults applied through hydration.
+- Virtuals unless explicitly supported/applied.
+
+Rules:
+
+- Do not mechanically append `.lean()` to every query.
+- Do not accidentally change response semantics if existing getters/virtuals are required.
+- Prefer explicit projections with `lean()` for hot read paths.
+
+### 42.19 Mongoose update semantics
+
+For each update, choose deliberately among:
+
+- Load document → modify → `save()`.
+- `updateOne()`.
+- `findOneAndUpdate()`.
+- Atomic operators such as `$inc`, `$set`, `$addToSet`.
+- Transaction across multiple operations.
+
+Prefer document `save()` when:
+
+- Full document validation is useful.
+- Save middleware is required.
+- Domain code naturally modifies a loaded document.
+
+Prefer atomic query update when:
+
+- Concurrency makes read-modify-save unsafe or wasteful.
+- The operation is naturally represented by MongoDB operators.
+- You need conditional update semantics.
+
+Rules:
+
+- Make the returned-document semantics explicit for `findOneAndUpdate()` (`returnDocument`/project-version equivalent) rather than relying on memory/default assumptions.
+- Add `runValidators: true` when update validation is required.
+- Include authorization/tenant constraints inside the update filter where possible.
+- Use `$inc` for atomic counters rather than read + increment + save when appropriate.
+
+### 42.20 Mongoose middleware / hooks
+
+Mongoose supports document, query, model, and aggregate middleware with different `this` semantics.
+
+Rules:
+
+- Know whether the hook is document or query middleware.
+- Register middleware before compiling the model where required.
+- Do not assume `save()` hooks run for `findOneAndUpdate()`/`updateOne()`.
+- Do not hide critical cross-system side effects such as payment capture or email sending in persistence hooks.
+- Good hook candidates include tightly persistence-related behavior such as normalization, derived persistence fields, or auditing when ordering/transaction semantics are understood.
+- Complex business workflows belong in application services/use cases.
+
+### 42.21 Mongoose `populate()` rules
+
+Use `populate()` deliberately.
+
+Rules:
+
+- Select only fields needed from populated documents.
+- Avoid deep/nested population chains on hot list endpoints.
+- Inspect query count and latency.
+- Do not use populate to compensate for a poor MongoDB data model.
+- For complex reporting, an aggregation `$lookup`, denormalized read model, or separate query strategy may be more efficient.
+- Be cautious with per-document limits because they can require separate queries for parent documents.
+
+### 42.22 Mongoose index management
+
+Mongoose can create schema-declared indexes automatically, but automatic index creation can impose significant production load.
+
+Rules:
+
+- For production systems, index creation SHOULD be a controlled deployment/operations step.
+- Consider `autoIndex: false` in production according to the project's deployment workflow.
+- Keep index definitions near the Mongoose schema as source-of-truth metadata when useful, but verify deployed database indexes separately.
+- Review index changes like schema migrations.
+- Avoid running broad `syncIndexes()` automatically on every production startup without operational review because it may drop/create indexes.
+
+### 42.23 Mongoose connection rules
+
+- Create a reusable connection/pool; do not connect per request.
+- Size `maxPoolSize` from application concurrency and database/provider connection limits rather than copying a random number.
+- Understand `serverSelectionTimeoutMS` and failure behavior.
+- Fail startup when required database connectivity cannot be established according to deployment policy.
+- Log connection-state changes without leaking credentials.
+- Gracefully close connections during shutdown.
+- For serverless runtimes, reuse cached connections according to platform lifecycle and library guidance.
+
+### 42.24 Mongoose transaction rules
+
+Prefer `Connection#transaction()` or driver `withTransaction()` patterns supported by the installed version.
+
+Rules:
+
+- Use a replica set/sharded deployment that supports transactions.
+- Pass/use the session consistently for all operations in the transaction unless the installed Mongoose version provides and the project deliberately uses automatic session propagation.
+- Do not use parallel Promise combinators for operations inside one transaction/session.
+- Keep transaction callbacks focused and free of slow external API calls.
+- Understand retry implications; external side effects must not be duplicated by transaction retries.
+
+### 42.25 Mongoose DTO and mapper rule
+
+Do not expose Mongoose documents directly across trust boundaries.
+
+Prefer:
+
+```ts
+const user = await UserModel.findById(id)
+  .select('_id name email createdAt')
+  .lean();
+
+return toUserDto(user);
+```
+
+A mapper SHOULD handle intentional representation differences such as:
+
+- `_id` → `id`.
+- Internal enum/storage names → public contract.
+- Date serialization.
+- Field omission.
+
+Do not put authorization-sensitive field removal solely in a global `toJSON` transform when different endpoints expose different fields.
+
+### 42.26 Mongoose repository pattern
+
+A repository is recommended when:
+
+- Queries contain tenant/authorization scoping.
+- Persistence representation differs from application representation.
+- Query/index behavior is non-trivial.
+- Transactions need a consistent session-aware API.
+- Multiple use cases reuse meaningful persistence operations.
+
+Example shape:
+
+```ts
+export interface UserRepository {
+  findById(id: string): Promise<UserRecord | null>;
+  findByEmail(email: string): Promise<UserRecord | null>;
+  existsByEmail(email: string): Promise<boolean>;
+  create(input: CreateUserPersistenceInput): Promise<UserRecord>;
+}
+```
+
+Do not create an interface only because this example has one. A concrete repository module is sufficient when no alternate adapter/testing boundary requires an interface.
+
+### 42.27 MongoDB soft-delete rule
+
+Do not add `isDeleted`/`deletedAt` by default.
+
+If soft deletion is a real requirement, define:
+
+- Which queries exclude deleted documents.
+- Unique-index behavior for deleted values.
+- Restore behavior.
+- Retention/permanent-delete behavior.
+- References from other collections.
+- Audit/legal requirements.
+
+A hidden global Mongoose query hook for soft delete MAY reduce mistakes, but it can also make behavior surprising; use only with clear escape hatches and tests.
+
+### 42.28 MongoDB multi-tenancy
+
+Tenant isolation MAY use:
+
+- Shared collections with mandatory `tenantId`.
+- Database-per-tenant.
+- Cluster-per-tenant for stronger isolation.
+
+For shared collections:
+
+- Include verified `tenantId` in every tenant-owned read/write filter.
+- Include `tenantId` in uniqueness indexes when uniqueness is tenant-scoped.
+- Consider `tenantId` in compound index prefixes based on query shapes.
+- Never trust a client-submitted tenant ID over authenticated context.
+
+For database-per-tenant:
+
+- Bound/manage connection pools carefully.
+- Do not create an unbounded new Mongoose connection for every request.
+- Document tenant provisioning and connection lifecycle.
+
+### 42.29 MongoDB/Mongoose schema evolution
+
+MongoDB flexibility does not remove migration work.
+
+For schema evolution:
+
+- New application versions SHOULD tolerate old document shapes during staged migrations when necessary.
+- Backfill in bounded batches.
+- Make backfills idempotent/restartable.
+- Add new indexes with an operational plan.
+- Do not rewrite an entire collection synchronously from an HTTP request.
+- Track schema/data migration scripts in source control.
+
+### 42.30 MongoDB/Mongoose testing rules
+
+Test against a real MongoDB-compatible test deployment for persistence behavior that depends on:
+
+- Index uniqueness.
+- Transactions.
+- Aggregation.
+- Query operators.
+- Mongoose middleware.
+- Update validators.
+- Session behavior.
+
+Mock repositories for pure application unit tests, but do not claim MongoDB behavior is verified using only mocked model methods.
+
+### 42.31 MongoDB/Mongoose anti-hallucination checklist
+
+Before implementing persistence code, the agent MUST answer:
+
+- [ ] Exact MongoDB server/provider version?
+- [ ] Exact Mongoose version?
+- [ ] Replica set/sharded/standalone deployment?
+- [ ] Current collection schema and real document shape?
+- [ ] Core query/read/write patterns?
+- [ ] Embed or reference, and why?
+- [ ] Can an array/document grow without bound?
+- [ ] Which index supports this query?
+- [ ] Is uniqueness enforced by an index?
+- [ ] Is the operation single-document atomic or multi-document?
+- [ ] Does a transaction actually need to exist?
+- [ ] Are update validators required?
+- [ ] Does this query need hydrated documents or can it use `lean()`?
+- [ ] Does `populate()` create avoidable query cost?
+- [ ] Are raw request objects prevented from becoming Mongo filters/updates?
+- [ ] Is tenant scope authoritative and inside the query?
+- [ ] Are API response fields mapped/allowlisted?
+- [ ] Is index creation controlled for production?
+
 
 ---
 
@@ -4901,6 +6622,89 @@ Use Eloquent in Laravel unless a strong project requirement justifies another ap
 
 Do not use two primary ORMs for the same database without a migration boundary and explicit ownership.
 
+### 44.3 ORM versus ODM terminology
+
+Use precise terminology:
+
+- **ORM**: maps application models to relational tables/rows. Examples: Prisma with SQL, Drizzle, Eloquent.
+- **ODM**: maps application models to document data. Mongoose is an ODM for MongoDB.
+
+Prisma can also support MongoDB in version-dependent ways, but the underlying database remains a document database and Mongo-specific limitations/semantics still apply.
+
+The agent MUST NOT infer capabilities from the word “ORM”. Always verify the selected database connector.
+
+### 44.4 Persistence-tool selection rule
+
+Choose the persistence library from the database and project needs:
+
+| Database / need | Preferred consideration |
+|---|---|
+| MongoDB, rich document hooks/schema/query ecosystem | Mongoose |
+| MongoDB, type-safe Prisma workflow | Prisma only when the installed/current Mongo connector supports required features |
+| PostgreSQL/MySQL with schema-generated client and Prisma workflow | Prisma |
+| PostgreSQL/MySQL/SQLite with SQL-like typed control | Drizzle |
+| Laravel relational application | Eloquent |
+| Advanced database-specific query beyond ORM capability | Native driver / parameterized SQL/query API behind repository |
+
+Do not add both Mongoose and Prisma for the same MongoDB collections without a deliberate migration/ownership boundary.
+
+### 44.5 Repository versus direct ORM usage
+
+Direct ORM/ODM use inside a small application service is acceptable when:
+
+- The query is trivial.
+- It does not leak persistence types across boundaries.
+- Reuse is minimal.
+- Testing remains clear.
+
+Create a repository/query module when:
+
+- Query logic is repeated.
+- Tenant/resource scoping must be centralized.
+- Persistence mappings are non-trivial.
+- Transactions need a clean boundary.
+- Queries require indexes/performance expertise.
+- You need to isolate infrastructure from domain/application logic.
+
+Do not create repositories automatically for every table/document.
+
+### 44.6 Raw query escape hatch
+
+Use native MongoDB operations/raw SQL when the higher-level library cannot express the operation correctly or efficiently.
+
+Rules:
+
+- Keep raw persistence code behind a repository/infrastructure boundary.
+- Parameterize SQL values.
+- Validate/allowlist identifiers that cannot be parameterized.
+- Never construct MongoDB operators from untrusted input.
+- Add integration tests.
+- Document why the higher-level API was insufficient.
+
+### 44.7 Persistence migration ownership
+
+Every persistence tool needs a schema/data change strategy:
+
+- Relational ORM: reviewed migrations.
+- Mongoose/MongoDB: migration/backfill scripts + index deployment process.
+- Prisma MongoDB: use the workflow supported by the installed Prisma version; do not assume relational Prisma Migrate semantics automatically apply.
+
+The deployment process MUST know which step applies schema/index/data changes.
+
+### 44.8 ORM/ODM agent checklist
+
+- [ ] Is this library an ORM, ODM, driver, or query builder?
+- [ ] Which database connector is active?
+- [ ] What exact library version is installed?
+- [ ] Which migration/index workflow does this connector support?
+- [ ] Are database constraints actually enforced by the database or emulated by the client?
+- [ ] What SQL/Mongo queries will this code generate?
+- [ ] Is there N+1/populate overuse?
+- [ ] Are returned fields explicitly selected?
+- [ ] Does the operation need a transaction/session?
+- [ ] Does the repository add a meaningful boundary?
+
+
 ---
 
 ## 45. Prisma Rules
@@ -4916,6 +6720,21 @@ Do not use two primary ORMs for the same database without a migration boundary a
 - Map Prisma errors to application errors at the infrastructure boundary.
 - Do not leak Prisma model types into frontend contracts by default.
 - Configure one reusable client per process/runtime pattern; avoid connection storms.
+
+### 45.1 Prisma + MongoDB version rule
+
+Prisma's MongoDB connector behavior changes materially across major releases. Therefore agents MUST verify the installed Prisma major and its MongoDB documentation before implementation.
+
+Rules:
+
+- Do not assume MongoDB supports the same migration, relation, transaction, or scalar-type semantics as PostgreSQL/MySQL in Prisma.
+- MongoDB relations do not become database foreign keys merely because they are represented in Prisma schema.
+- Verify replica-set requirements for any transaction/nested-write behavior used by the installed Prisma version.
+- Verify whether the installed Prisma version supports MongoDB transactions through Prisma itself; do not invent `$transaction`/`db.transaction()` support based on SQL examples.
+- Review MongoDB `null` versus missing-field semantics.
+- Verify migration/schema-push workflow from the installed-version docs.
+- Do not migrate a working Mongoose project to Prisma merely for stylistic preference.
+
 
 ---
 
@@ -4944,6 +6763,17 @@ src/db/
 │   └── relations.ts
 └── migrations/
 ```
+
+### 46.1 Drizzle database-support rule
+
+At the 2026-08-26 review snapshot, Drizzle's official get-started documentation lists SQL-family connectors such as PostgreSQL, MySQL, SQLite, MSSQL, CockroachDB, and related providers; MongoDB is not listed as a supported Drizzle database.
+
+Therefore:
+
+- Do not choose Drizzle for a MongoDB/Mongoose project based on hallucinated MongoDB support.
+- Re-check official Drizzle documentation in the future because supported databases may change.
+- For MongoDB, use a supported MongoDB driver/ODM/connector such as Mongoose or a version-compatible Prisma MongoDB connector when requirements fit.
+
 
 ---
 
@@ -5485,6 +7315,7 @@ Review it when:
 - The team repeatedly encounters the same code-review issue.
 - A pattern proves too complex or insufficient.
 - Deployment architecture changes.
+- Express/Mongoose/MongoDB architecture rules receive a major behavioral update.
 
 ### 63.1 Update process
 
@@ -5500,6 +7331,7 @@ Review it when:
 | Date | Change |
 |---|---|
 | 2026-08-03 | Rebuilt as a full engineering constitution covering frontend, backend, algorithms, React, Next.js, Node.js, Express, Fastify, PHP, Laravel, SQL/NoSQL databases, Prisma, Drizzle, Eloquent, testing, security, and agent workflow. |
+| 2026-08-26 | Added the Backend 2026 addendum: three approved Node/Express structures, feature-first Express + MongoDB/Mongoose architecture, Express 5 rules, relational/NoSQL modeling rules, deep MongoDB/Mongoose guidance, ORM/ODM boundaries, and backend anti-hallucination checklists. |
 | 2026-08-17 | Added the frontend animation engineering addendum: CSS/native motion selection, Motion for React (Framer Motion successor), GSAP/@gsap/react, ScrollTrigger, Flip, Lenis, Anime.js, React Spring, AutoAnimate, Rive, lifecycle/folder patterns, performance, accessibility, testing, and anti-hallucination rules. |
 
 ---
@@ -5533,6 +7365,16 @@ Agents SHOULD prefer version-matched official documentation and primary standard
 
 - Node.js release and security documentation.
 - Express 5 documentation and migration guide.
+- Express production security guidance: `https://expressjs.com/en/advanced/best-practice-security/`.
+- Express production performance/reliability guidance: `https://expressjs.com/en/advanced/best-practice-performance/`.
+- Express 5 error handling: `https://expressjs.com/en/5x/guide/error-handling/`.
+- Express 5 migration guide: `https://expressjs.com/en/guide/migrating-5/`.
+- Mongoose current guides/API/version support: `https://mongoosejs.com/docs/`.
+- Mongoose validation: `https://mongoosejs.com/docs/validation.html`.
+- Mongoose schemas/index behavior: `https://mongoosejs.com/docs/guide.html`.
+- Mongoose connections/pooling: `https://mongoosejs.com/docs/connections.html`.
+- Mongoose middleware: `https://mongoosejs.com/docs/middleware.html`.
+- Mongoose transactions: `https://mongoosejs.com/docs/transactions.html`.
 - Fastify validation, serialization, plugins, lifecycle, and testing documentation.
 - PHP supported versions and PHP language documentation.
 - PSR-4 and PSR-12 standards.
@@ -5541,8 +7383,15 @@ Agents SHOULD prefer version-matched official documentation and primary standard
 ### Data and security
 
 - PostgreSQL current documentation.
+- PostgreSQL constraints: `https://www.postgresql.org/docs/current/ddl-constraints.html`.
+- PostgreSQL indexes: `https://www.postgresql.org/docs/current/indexes.html`.
+- PostgreSQL transaction isolation: `https://www.postgresql.org/docs/current/transaction-iso.html`.
 - MySQL 8.4 documentation.
 - MongoDB schema, indexing, and transaction documentation.
+- MongoDB schema-design process: `https://www.mongodb.com/docs/manual/data-modeling/schema-design-process/`.
+- MongoDB data-modeling best practices: `https://www.mongodb.com/docs/manual/data-modeling/best-practices/`.
+- MongoDB indexing strategies: `https://www.mongodb.com/docs/manual/applications/indexes/`.
+- MongoDB transactions: `https://www.mongodb.com/docs/manual/core/transactions/`.
 - Redis documentation.
 - Prisma migration and transaction documentation.
 - Drizzle schema, migration, relation, and transaction documentation.
