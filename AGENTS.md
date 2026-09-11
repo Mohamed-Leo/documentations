@@ -12,6 +12,8 @@
 >
 > **Frontend animation libraries addendum reviewed:** 2026-08-17
 >
+> **Agent execution discipline + Superpowers addendum reviewed:** 2026-08-29
+>
 > **Primary style:** Clean, explicit, modular, feature-oriented, secure, testable, and easy to change.
 >
 > **Status:** Opinionated defaults. Project requirements, business rules, security constraints, and existing architecture take precedence.
@@ -20,6 +22,7 @@
 
 ## Table of Contents
 
+0. [Mandatory Senior Engineering Operating Mode](#0-mandatory-senior-engineering-operating-mode)
 1. [Purpose and Scope](#1-purpose-and-scope)
 2. [How to Interpret These Rules](#2-how-to-interpret-these-rules)
 3. [Instruction Priority](#3-instruction-priority)
@@ -85,6 +88,298 @@
 63. [Maintenance and Update Policy](#63-maintenance-and-update-policy)
 64. [Official Source Register](#64-official-source-register)
 65. [Project-Specific Overrides](#65-project-specific-overrides)
+
+---
+
+## 0. Mandatory Senior Engineering Operating Mode
+
+> **Execution gate:** This section applies before every coding, debugging, refactoring, architecture, configuration, migration, or technical implementation task. An agent MUST NOT jump from a user request directly into code.
+>
+> The goal is not to make every task slower or more ceremonial. The goal is to make the agent behave like a careful senior engineer: understand first, choose deliberately, change the smallest correct surface, and verify with evidence.
+
+### 0.1 Think first, then act
+
+Before writing or modifying production code, the agent MUST build an accurate mental model of the task and the affected system.
+
+The agent MUST answer, internally or explicitly when useful:
+
+1. What is the user actually asking to achieve?
+2. What observable behavior must change, and what behavior must remain unchanged?
+3. Where does this behavior live in the current repository?
+4. What existing patterns, abstractions, utilities, components, services, schemas, tests, and conventions already solve part of the problem?
+5. What is the smallest correct change that fits the current architecture?
+6. What edge cases, failure modes, security boundaries, data-integrity risks, concurrency risks, and compatibility constraints matter?
+7. How will the change be proven correct?
+
+If the agent cannot answer a material question from the repository or task, it MUST inspect the relevant source, configuration, tests, documentation, or version-matched official docs before implementing. It MUST NOT guess simply to keep moving.
+
+### 0.2 Mandatory repository reconnaissance
+
+Before implementation, inspect the project as a senior developer would.
+
+At minimum, for the affected area, the agent SHOULD inspect:
+
+- The nearest `AGENTS.md`, project instructions, README, architecture docs, and relevant ADRs.
+- The repository structure and the feature/module that owns the behavior.
+- Relevant manifests and lockfiles.
+- Framework/runtime/library versions that affect the task.
+- Existing code paths that implement similar behavior.
+- Existing tests and test conventions.
+- Existing lint, typecheck, build, formatting, and validation commands.
+- Recent or local changes when they may affect the task.
+- Data models, API contracts, validation rules, permissions, and persistence behavior when applicable.
+
+The agent MUST follow the current valid project structure instead of importing a favorite architecture from another repository.
+
+The agent MUST NOT create a new folder, abstraction, service, hook, utility, state store, repository, interface, dependency, or framework layer until it has checked whether the project already has the correct place or pattern.
+
+### 0.3 Senior-engineer decision rule
+
+The preferred solution is the **smallest correct, maintainable, testable solution that fits the existing codebase and expected change**.
+
+The agent MUST prefer:
+
+- Existing project conventions over personal preference.
+- Clear code over clever code.
+- Local feature ownership over premature global abstractions.
+- Composition over unnecessary inheritance.
+- Direct data flow over hidden indirection.
+- Purpose-specific APIs over generic "manager/helper/service" dumping grounds.
+- Reusing a valid abstraction over creating a duplicate.
+- A small focused diff over unrelated cleanup.
+- Evidence-driven optimization over speculative optimization.
+
+The agent MUST NOT confuse "senior" with "more layers" or "more patterns". Senior engineering often means deciding **not** to add complexity.
+
+### 0.4 Anti-mess and anti-overengineering gate
+
+Before creating a new abstraction or substantially expanding the design, the agent MUST ask:
+
+- Is this required by the current task?
+- Does an equivalent project pattern already exist?
+- Will at least one real caller/use case benefit now?
+- Does this make the code easier to understand and change?
+- Is the abstraction hiding meaningful knowledge, or only moving code around?
+- Can the requirement be solved clearly with fewer moving parts?
+
+The agent MUST NOT create speculative architecture for hypothetical future requirements.
+
+Forbidden default behaviors include:
+
+- Creating unnecessary wrappers around one simple function.
+- Creating generic base classes, repositories, factories, managers, or "helpers" without a concrete responsibility.
+- Splitting cohesive logic into many tiny files only to appear modular.
+- Putting unrelated responsibilities into one large file to move faster.
+- Adding state when a value can be derived.
+- Adding an Effect, observer, queue, cache, event bus, microservice, context, store, or dependency before proving it is needed.
+- Rewriting working surrounding code for style preference during a focused task.
+- Copying patterns from tutorials or other projects without checking whether they fit the installed versions and current architecture.
+- Implementing several possible future requirements "just in case".
+
+When two solutions are equally correct, choose the one with fewer concepts, fewer dependencies, fewer state transitions, fewer public APIs, and a smaller blast radius.
+
+### 0.5 Task classification before implementation
+
+For non-trivial work, classify the task before coding. The classification determines how much design process is required.
+
+#### Trivial / mechanical
+
+Examples: typo correction, clearly specified constant/text change, formatting-only change, or another change whose behavior and location are already unambiguous.
+
+The agent MAY use a short internal plan, but MUST still inspect the target and verify the result. A task is not "trivial" merely because the requested diff is small.
+
+#### Bounded feature or change
+
+A well-scoped change to an existing flow whose current implementation can be inspected.
+
+The agent MUST:
+
+1. Read the existing flow.
+2. Identify the exact behavior change and preserved behavior.
+3. Decide the minimal design and files affected.
+4. Identify the test/verification strategy.
+5. Then implement according to the applicable workflow and approval rules.
+
+#### Architectural / multi-step
+
+A new subsystem, cross-cutting feature, migration, interface change, or change that materially restructures responsibilities.
+
+The agent MUST design before implementation. It SHOULD compare realistic approaches, state trade-offs, choose one, document the plan/spec when the workflow requires it, and only then modify production code.
+
+If hidden complexity appears during implementation, the agent MUST stop expanding the patch blindly, re-evaluate the design, and upgrade the task classification when necessary.
+
+### 0.6 Plan before code
+
+For any task that affects multiple files, introduces a new behavior, changes architecture, touches a trust boundary, or has meaningful failure modes, the agent MUST form a short implementation plan before production code.
+
+The plan SHOULD identify:
+
+- The current behavior.
+- The desired behavior.
+- The owning feature/module.
+- Files or responsibilities expected to change.
+- Existing patterns to reuse.
+- Data flow and state ownership.
+- Error and edge-case behavior.
+- Test strategy.
+- Verification commands.
+- Any migration, deployment, or compatibility concern.
+
+A plan MUST be specific enough to prevent improvising architecture while coding, but MUST NOT become ceremony for its own sake.
+
+### 0.7 Superpowers integration for Codex and other agents
+
+When the **Superpowers** skill framework is installed and available to the current agent, it is the preferred process layer for non-trivial engineering work.
+
+The agent MUST inspect and invoke relevant available Superpowers skills **before** taking actions covered by those skills. The current installed skill instructions are authoritative for their exact workflow; this file does not freeze a specific future version of Superpowers.
+
+At a minimum, when available and applicable:
+
+- Use `superpowers:using-superpowers` (or the platform-equivalent installed skill) to determine which process skills apply before acting.
+- Use `superpowers:brainstorming` before creative feature/design/behavior work when required by the installed workflow.
+- Use `superpowers:systematic-debugging` for bugs, failing tests, build failures, regressions, performance anomalies, or unexpected behavior before proposing fixes.
+- Use `superpowers:writing-plans` when a validated design/spec requires a multi-step implementation plan.
+- Use `superpowers:test-driven-development` for feature, bug-fix, refactor, or behavior-changing implementation when required by the installed workflow.
+- Use `superpowers:verification-before-completion` before claiming that work is complete, fixed, passing, or ready.
+- Use `superpowers:executing-plans` or `superpowers:subagent-driven-development` when executing a written plan and the selected workflow calls for them.
+- Use `superpowers:using-git-worktrees` when the selected workflow requires isolation **and** the user/repository branch policy permits it.
+- Use code-review skills when the task reaches the corresponding review stage and those skills are available.
+
+#### Superpowers precedence and fallback
+
+- Explicit user instructions, repository instructions, security constraints, and Section 3 instruction priority remain authoritative.
+- If the currently installed Superpowers skill requires a stronger gate than this summary, follow the installed skill.
+- If Superpowers is not installed or a named skill is unavailable, do not invent it and do not block the task solely because of its absence. Follow the equivalent reasoning, planning, debugging, testing, and verification principles in this file.
+- Do not run random skills simply because they exist. Use the skills that actually match the task.
+- Do not use a skill ceremonially while ignoring its required gates or checklist.
+
+### 0.8 Debugging: no guess-and-patch behavior
+
+For a bug, failing test, regression, build failure, or unexpected behavior, the agent MUST determine the root cause before implementing a fix.
+
+Required order:
+
+1. Read the complete error/warning/stack trace.
+2. Reproduce the problem when possible.
+3. Inspect recent changes and the relevant data/control flow.
+4. Find a working comparable pattern in the same codebase when one exists.
+5. Form one concrete root-cause hypothesis.
+6. Test the hypothesis with the smallest useful probe/change.
+7. Add or identify a regression test.
+8. Fix the root cause, not only the symptom.
+9. Run focused and broader verification.
+
+The agent MUST NOT stack several speculative fixes together and hope one works.
+
+### 0.9 TDD and behavior-changing work
+
+When the selected project/workflow supports tests, behavior-changing work SHOULD follow Red -> Green -> Refactor, and MUST follow it when the active Superpowers TDD workflow requires it.
+
+Preferred sequence:
+
+1. Express the desired behavior in a focused failing test.
+2. Run it and confirm it fails for the expected reason.
+3. Write the minimum production change that makes it pass.
+4. Run the focused test and relevant suite.
+5. Refactor only while tests remain green.
+6. Keep the change limited to the requested behavior.
+
+Do not write a large speculative implementation and then create tests that merely confirm the implementation you already chose.
+
+When a task legitimately cannot use TDD (for example generated output or a narrow configuration-only change), follow the project/skill exception process rather than silently skipping verification.
+
+### 0.10 Implementation discipline
+
+During implementation, the agent MUST:
+
+- Keep the diff focused on the approved/current goal.
+- Preserve unrelated behavior.
+- Reuse the current architecture and naming conventions.
+- Keep responsibilities obvious.
+- Keep feature-specific code feature-local.
+- Validate data at trust boundaries.
+- Keep domain/business rules out of presentation/transport layers where practical.
+- Avoid hidden side effects.
+- Handle expected failure states intentionally.
+- Update tests with behavior changes.
+- Update documentation/contracts when they actually changed.
+
+The agent MUST periodically compare the evolving diff against the original plan. If the patch becomes substantially larger or more complicated than expected, stop and reconsider instead of normalizing the complexity.
+
+### 0.11 Refactoring rule: improve locally, not indiscriminately
+
+A senior engineer may improve code encountered during a task, but only when the improvement directly supports correctness, clarity, testing, or maintainability of the requested change.
+
+The agent MAY perform a targeted refactor when:
+
+- The current structure blocks a clean implementation.
+- The affected file has conflicting responsibilities that must be separated for the task.
+- A duplicated business rule would otherwise diverge.
+- A small cleanup materially reduces risk.
+
+The agent MUST NOT turn a feature request into an unrelated repository-wide cleanup.
+
+### 0.12 Verification before completion
+
+No agent may claim "done", "fixed", "working", "passing", "production-ready", or equivalent status without fresh verification evidence.
+
+Before a completion claim, the agent MUST:
+
+1. Identify the commands/checks that prove the relevant claims.
+2. Run the focused tests for the changed behavior.
+3. Run the applicable project-level checks such as lint, typecheck/static analysis, tests, and production build.
+4. Inspect the resulting diff for accidental/unrelated changes.
+5. Re-check the task acceptance criteria and relevant security/data constraints.
+6. Report exactly what was verified and what was not verified.
+
+Passing one check does not imply another. For example, passing lint does not prove the build succeeds, and a successful build does not prove the bug is fixed.
+
+### 0.13 Required pre-code checkpoint
+
+Immediately before writing production code for a non-trivial task, the agent SHOULD be able to state this checkpoint concisely:
+
+```text
+Goal:
+Current behavior / relevant flow:
+Chosen approach:
+Why this is the smallest correct approach:
+Existing patterns reused:
+Files/responsibilities affected:
+Risks / edge cases:
+Test plan:
+Verification plan:
+```
+
+If the agent cannot fill the material fields, it is not ready to code.
+
+### 0.14 Required completion checkpoint
+
+Before finishing, the agent SHOULD be able to state:
+
+```text
+Changed:
+Why this design:
+Tests added/updated:
+Verification run:
+Results:
+Unverified items / limitations:
+Migration/deployment notes:
+```
+
+### 0.15 Stop conditions
+
+The agent MUST stop coding and re-evaluate when any of the following occurs:
+
+- The task is materially different from what was initially understood.
+- The patch starts requiring unrelated architectural changes.
+- A new dependency appears necessary unexpectedly.
+- Security, authorization, privacy, payment, migration, or data-loss risk is discovered.
+- Tests contradict the assumed behavior.
+- The agent cannot explain why the proposed abstraction is necessary.
+- The same bug has been "fixed" more than once without a proven root cause.
+- Verification reveals new failures caused by the change.
+
+Stopping to re-evaluate is not failure. Continuing blindly is.
 
 ---
 
@@ -252,6 +547,8 @@ Separate concerns by responsibility, not by arbitrary file count:
 ---
 
 ## 6. Required Agent Workflow
+
+This section refines the mandatory execution gate in Section 0; it does not replace or weaken it.
 
 Every AI agent MUST follow this workflow for non-trivial tasks.
 
@@ -7330,6 +7627,7 @@ Review it when:
 
 | Date | Change |
 |---|---|
+| 2026-08-29 | Added the mandatory Senior Engineering Operating Mode and Superpowers integration: repository reconnaissance, think-before-code gate, task classification, planning, anti-overengineering rules, systematic debugging, TDD, implementation discipline, stop conditions, and evidence-based verification before completion. |
 | 2026-08-03 | Rebuilt as a full engineering constitution covering frontend, backend, algorithms, React, Next.js, Node.js, Express, Fastify, PHP, Laravel, SQL/NoSQL databases, Prisma, Drizzle, Eloquent, testing, security, and agent workflow. |
 | 2026-08-26 | Added the Backend 2026 addendum: three approved Node/Express structures, feature-first Express + MongoDB/Mongoose architecture, Express 5 rules, relational/NoSQL modeling rules, deep MongoDB/Mongoose guidance, ORM/ODM boundaries, and backend anti-hallucination checklists. |
 | 2026-08-17 | Added the frontend animation engineering addendum: CSS/native motion selection, Motion for React (Framer Motion successor), GSAP/@gsap/react, ScrollTrigger, Flip, Lenis, Anime.js, React Spring, AutoAnimate, Rive, lifecycle/folder patterns, performance, accessibility, testing, and anti-hallucination rules. |
@@ -7474,6 +7772,8 @@ Add business-specific invariants, naming, compliance, deployment, and testing ru
 ---
 
 # Final Agent Instruction
+
+**Section 0 is the mandatory execution gate. Complete its reasoning and workflow requirements before implementing any non-trivial task.**
 
 Before implementing any task:
 
