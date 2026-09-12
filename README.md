@@ -1,32 +1,45 @@
-# Engineering Documentation & AI Agent Playbook
+# Engineering Documentation & AI Skills Hub
 
-A public, evolving knowledge base for software engineering standards, development workflows, code-quality tooling, and AI-assisted development.
+A centralized, evolving knowledge base for **software engineering standards, development workflows, code-quality practices, and reusable AI-agent skills**.
 
-This repository collects the conventions and reusable guidance I use across projects so that developers and coding agents can start from the same engineering baseline instead of rediscovering decisions in every codebase.
+This repository exists to give developers and AI coding agents a consistent starting point across projects. Instead of rediscovering the same engineering decisions, workflows, prompts, quality rules, and product-definition practices in every codebase, the reusable guidance lives here.
 
-> **Primary entry point:** [`AGENTS.md`](./AGENTS.md) is the current engineering constitution and the main source of repository-wide development guidance.
+> **Start here for engineering work:** [`AGENTS.md`](./AGENTS.md)  
+> **Browse reusable AI capabilities:** [`ai-skils/`](./ai-skils)  
+> **Git/GitHub workflow:** [`gitHub-workflow/WORKFLOW.md`](./gitHub-workflow/WORKFLOW.md)
 
 ---
 
-## What This Repository Covers
+## Why This Repository Exists
 
-The documentation currently spans:
+Modern software projects need more than source code. They also need shared rules for how work is discovered, planned, implemented, reviewed, tested, documented, and maintained.
 
-- Full-stack engineering principles and architecture decisions
-- AI coding-agent behavior and implementation workflow
-- JavaScript and TypeScript conventions
-- React and Next.js application architecture
-- Forms, state management, data fetching, and component design
-- Node.js, Express, Fastify, PHP, and Laravel guidance
-- PostgreSQL, MySQL, MongoDB, Redis, Prisma, Drizzle, and Eloquent
-- Authentication, authorization, application security, and secrets
-- Testing, performance, observability, CI/CD, and quality gates
-- GitHub collaboration and pull-request workflow
-- ESLint, Prettier, Husky, Commitlint, and lint-staged setup
-- Frontend motion and animation guidance
-- Graphify setup for repository knowledge graphs and AI-agent navigation
+This repository acts as a reusable engineering layer across projects by collecting:
 
-The goal is not to force one architecture onto every project. These documents provide strong defaults that should be adapted to the actual product, existing codebase, runtime, security requirements, and team constraints.
+- engineering principles and architecture guidance
+- AI-agent operating rules
+- frontend and backend development standards
+- clean-code and code-quality conventions
+- Git and GitHub collaboration workflows
+- local quality gates and commit tooling
+- repository-navigation and knowledge-graph setup
+- reusable AI skills for specialized workflows
+- product and requirements-definition skills such as BRD/PRD discovery
+
+The goal is **not** to force one architecture or toolchain onto every project. These documents provide strong defaults that should always be adapted to the target project's actual business requirements, architecture, runtime, security constraints, team practices, and existing conventions.
+
+---
+
+## Repository at a Glance
+
+| Area | Purpose | Use it when... |
+| --- | --- | --- |
+| [`AGENTS.md`](./AGENTS.md) | Main engineering constitution and AI-agent rules | Starting technical work, architecture, implementation, debugging, refactoring, or review |
+| [`ai-skils/`](./ai-skils) | Library of reusable AI skills | A task needs a specialized repeatable workflow, domain process, or agent capability |
+| [`GRAPHIFY_AGENT_SETUP.md`](./GRAPHIFY_AGENT_SETUP.md) | Graphify setup and usage | A large repository needs faster structural understanding and agent navigation |
+| [`clean-code/`](./clean-code) | Clean-code rules and tooling examples | Configuring ESLint, Prettier, naming, code organization, or frontend conventions |
+| [`gitHub-workflow/`](./gitHub-workflow) | GitHub delivery workflow | Creating issues, branches, commits, pull requests, reviews, and merges |
+| [`husky/`](./husky) | Local Git quality gates | Setting up Husky, lint-staged, Commitlint, pre-commit, or commit-msg hooks |
 
 ---
 
@@ -34,9 +47,17 @@ The goal is not to force one architecture onto every project. These documents pr
 
 ```text
 documentations/
+├── README.md
 ├── AGENTS.md
 ├── GRAPHIFY_AGENT_SETUP.md
-├── README.md
+│
+├── ai-skils/
+│   ├── <skill-name>/
+│   │   ├── SKILL.md
+│   │   ├── references/        # optional supporting knowledge/templates
+│   │   ├── tests/             # optional skill validation assets
+│   │   └── SOURCES.md         # optional research/source register
+│   └── ...                    # reusable skills across many domains
 │
 ├── clean-code/
 │   ├── README.md
@@ -47,10 +68,7 @@ documentations/
 │   ├── .prettierrc
 │   ├── .vscode/
 │   ├── src/
-│   │   ├── index.ts
-│   │   └── test.js
 │   ├── package.json
-│   ├── package-lock.json
 │   └── steps.txt
 │
 ├── gitHub-workflow/
@@ -61,104 +79,164 @@ documentations/
     └── Mind Map.png
 ```
 
+> The `ai-skils` directory is intentionally shown at a high level because it is a growing skill library. Individual skill packages may contain different supporting files depending on what the skill needs.
+
 ---
 
-## Documentation Map
+# Core Documentation
 
-### [`AGENTS.md`](./AGENTS.md)
+## 1. Engineering Constitution — `AGENTS.md`
 
-The main engineering constitution for both humans and AI coding agents.
+[`AGENTS.md`](./AGENTS.md) is the primary engineering reference in this repository.
 
-It defines opinionated defaults for:
+It defines the default operating model for both human developers and AI coding agents, including:
 
-- instruction priority and agent workflow
-- the current production baseline
+- senior-engineer execution discipline
+- repository reconnaissance before implementation
+- architecture decision rules
 - clean code and naming
 - JavaScript and TypeScript
+- data structures and algorithms
 - frontend architecture
 - React and Next.js
-- forms and validation
-- TanStack Query and state management
+- forms, validation, state, and data fetching
 - styling and design systems
 - accessibility and performance
+- frontend testing
 - backend architecture
 - Node.js, Express, Fastify, PHP, and Laravel
 - API design
 - authentication and authorization
-- security
+- application security
 - relational and non-relational databases
+- PostgreSQL, MySQL, MongoDB, and Redis
 - Prisma, Drizzle, and Eloquent
 - transactions, migrations, queues, and caching
-- logging and observability
-- error handling and configuration
-- testing and CI/CD
+- logging, observability, configuration, and error handling
+- testing strategy and CI/CD
 - Git and change management
 - documentation standards
 - definition of done
 - forbidden AI-agent behavior
 - technology evaluation and maintenance rules
 
-If you are using this repository to guide a new project or coding agent, **start here**.
+### How to use it
+
+Use `AGENTS.md` as a **default engineering constitution**, not as permission to overwrite a project's existing architecture.
+
+Before applying a rule, inspect the target repository and determine whether stronger project-specific requirements already exist.
 
 ---
 
-### [`GRAPHIFY_AGENT_SETUP.md`](./GRAPHIFY_AGENT_SETUP.md)
+## 2. AI Skills Library — `ai-skils/`
 
-Setup and usage guide for [Graphify](https://github.com/safishamsi/graphify), which creates a persistent project knowledge graph that coding agents can query before scanning large parts of a repository.
+[`ai-skils/`](./ai-skils) is a reusable library of specialized instructions and workflows for AI agents.
 
-The guide covers:
+The purpose of a skill is to make an AI agent perform a repeatable class of work with better structure, consistency, domain understanding, and quality control.
 
-- global Graphify installation
-- per-project setup
-- Codex configuration
-- local/offline code-only extraction
-- graph updates after code changes
-- query, explain, path, and affected workflows
-- optional semantic extraction with an LLM provider
-- a real workspace example
+A skill can define:
 
-This is especially useful for large codebases where repeated repository exploration wastes time and context.
+- when it should be used
+- what context must be inspected first
+- required discovery or reasoning steps
+- workflow stages
+- output structure
+- quality gates
+- templates and references
+- validation or test cases
+- source material
+- common failure modes
+
+### Typical skill structure
+
+```text
+ai-skils/<skill-name>/
+├── SKILL.md          # primary instructions and workflow
+├── SOURCES.md        # optional sources/research
+├── references/       # optional templates, checklists, guides
+└── tests/            # optional skill behavior/validation tests
+```
+
+Not every skill needs every supporting folder. `SKILL.md` is the main entry point for an individual skill.
+
+### Example: Software BRD + PRD
+
+[`ai-skils/software-brd-prd/`](./ai-skils/software-brd-prd) provides a structured requirements workflow for software products and projects.
+
+Its core approach is:
+
+1. **Discover before documenting.**
+2. Separate the **BRD** — business problem, value, objectives, constraints, and outcomes — from the **PRD** — users, behavior, product capabilities, requirements, quality attributes, and validation.
+3. Track **Confirmed facts, Assumptions, Open decisions, and Unknowns** instead of inventing missing information.
+4. Build the BRD before the PRD.
+5. Keep requirements traceable using stable IDs such as `BO-###`, `BR-###`, `FR-###`, and `NFR-###`.
+6. Validate requirements against explicit quality gates before calling documents final.
+
+This is useful when starting a new software product, defining an MVP, reviewing unclear requirements, or preparing a project before design and implementation.
 
 ---
 
-### [`clean-code/`](./clean-code)
+## 3. Graphify Agent Setup
 
-A supporting clean-code and tooling workspace containing both documentation and small reference configuration/source files.
+[`GRAPHIFY_AGENT_SETUP.md`](./GRAPHIFY_AGENT_SETUP.md) explains how to use Graphify to create a persistent project knowledge graph that coding agents can query before repeatedly scanning large repositories.
 
-Key files include:
+It covers:
 
-- [`clean-code/README.md`](./clean-code/README.md) — ESLint, Prettier, and broader coding-guideline notes
-- [`clean-code/ESLINT_PRETTIER.md`](./clean-code/ESLINT_PRETTIER.md) — focused ESLint/Prettier reference
-- [`clean-code/GLOBAL.md`](./clean-code/GLOBAL.md) — general coding standards and naming guidance
-- [`clean-code/NEXTRULES.md`](./clean-code/NEXTRULES.md) — React/Next-oriented component and code-organization rules
+- global installation
+- project setup
+- Codex integration
+- local/offline code extraction
+- graph refresh after code changes
+- repository queries
+- dependency/path exploration
+- affected-area analysis
+- optional semantic extraction
+
+Use it when repository size or complexity makes repeated manual exploration expensive.
+
+---
+
+## 4. Clean Code & Tooling
+
+[`clean-code/`](./clean-code) contains focused engineering notes plus reusable configuration examples.
+
+Important resources include:
+
+- [`clean-code/README.md`](./clean-code/README.md) — broader clean-code and tooling documentation
+- [`clean-code/ESLINT_PRETTIER.md`](./clean-code/ESLINT_PRETTIER.md) — ESLint and Prettier guidance
+- [`clean-code/GLOBAL.md`](./clean-code/GLOBAL.md) — general coding standards and naming rules
+- [`clean-code/NEXTRULES.md`](./clean-code/NEXTRULES.md) — React/Next.js-oriented organization and component rules
 - [`clean-code/eslint.config.mjs`](./clean-code/eslint.config.mjs) — example ESLint configuration
 - [`clean-code/.prettierrc`](./clean-code/.prettierrc) — example Prettier configuration
-- [`clean-code/src/`](./clean-code/src) — small JavaScript/TypeScript examples used with the tooling setup
 
-Some material in this folder predates the newer `AGENTS.md`. When guidance conflicts, treat `AGENTS.md` as the newer repository-level default unless a project-specific rule has higher priority.
+Some material in this directory predates the newer repository-wide `AGENTS.md`. When rules conflict, prefer the more current repository-level guidance unless the target project defines a stronger rule.
 
 ---
 
-### [`gitHub-workflow/WORKFLOW.md`](./gitHub-workflow/WORKFLOW.md)
+## 5. GitHub Workflow
 
-A team collaboration guide covering the development lifecycle on GitHub:
+[`gitHub-workflow/WORKFLOW.md`](./gitHub-workflow/WORKFLOW.md) defines a practical team workflow for delivering work through GitHub.
+
+It covers the lifecycle from task definition to merge, including:
 
 - issue structure
 - branch naming
 - commit conventions
-- pull requests
+- pull-request preparation
 - code review
 - merge requirements
 - post-merge maintenance
 - common change types and scopes
 
-Use it when establishing a consistent contribution workflow for a team repository.
+Use this guide when creating or organizing project tickets and when coordinating work between multiple developers or AI coding agents.
 
 ---
 
-### [`husky/README.md`](./husky/README.md)
+## 6. Husky & Local Quality Gates
 
-A practical setup guide for local Git quality gates using:
+[`husky/README.md`](./husky/README.md) is a practical setup guide for enforcing development quality before code reaches the remote repository.
+
+It includes:
 
 - Husky
 - lint-staged
@@ -168,88 +246,127 @@ A practical setup guide for local Git quality gates using:
 - `pre-commit` hooks
 - `commit-msg` hooks
 
-The folder also contains a visual [`Mind Map.png`](./husky/Mind%20Map.png) for the workflow.
+The folder also contains [`husky/Mind Map.png`](./husky/Mind%20Map.png) as a visual explanation of the workflow.
 
 ---
 
-## Recommended Usage
+# How to Use This Repository
 
-### For a developer
+## For Developers
 
-1. Read [`AGENTS.md`](./AGENTS.md) for the current engineering baseline.
-2. Use the focused guides only when you need their specific workflow or tooling.
-3. Copy or adapt rules into a project only when they fit that project's architecture and constraints.
-4. Prefer the versions, conventions, and runtime already declared by an existing project unless an upgrade is intentional.
+A recommended sequence is:
 
-### For an AI coding agent
-
-Use this repository as a **default engineering policy**, not as permission to rewrite an existing project.
-
-A coding agent should:
-
-1. inspect the target repository and its local instructions first
-2. preserve valid project conventions and business behavior
-3. apply security, data-integrity, and compatibility requirements before stylistic preferences
-4. use `AGENTS.md` as the default when the target project does not already define a stronger rule
-5. make the smallest change that correctly satisfies the task
-6. validate the result with the relevant lint, type, test, build, and runtime checks
+1. Read [`AGENTS.md`](./AGENTS.md) to understand the engineering baseline.
+2. Inspect the target project's own README, architecture, package manifests, tests, and local instructions.
+3. Use the focused documentation folder that matches the current task.
+4. Use an appropriate skill from [`ai-skils/`](./ai-skils) when the task benefits from a repeatable specialized workflow.
+5. Adapt reusable guidance to the project's real constraints instead of copying it blindly.
+6. Validate the final result using the project's own lint, typecheck, test, build, and runtime checks.
 
 ---
 
-## Rule Precedence
+## For AI Coding Agents
 
-A general documentation repository cannot know every project's business rules or operational constraints.
+This repository should improve an agent's judgment, not replace project discovery.
 
-When instructions conflict, use this practical order:
+Before making implementation changes, an agent should:
+
+1. understand the user's requested outcome
+2. inspect the target repository and its local instructions
+3. identify the smallest affected surface
+4. reuse existing architecture and patterns where valid
+5. load or follow a relevant specialized skill when appropriate
+6. preserve business behavior, security boundaries, and compatibility
+7. implement the smallest correct maintainable change
+8. verify the result with evidence
+
+A reusable rule from this repository should never silently override a stronger project-specific rule.
+
+---
+
+# Instruction Priority
+
+When guidance conflicts, use this practical order:
 
 1. explicit task requirements and acceptance criteria
 2. security, privacy, legal, and data-integrity requirements
-3. existing business behavior and public compatibility guarantees
-4. project-specific documentation and architecture
+3. existing business behavior and compatibility guarantees
+4. project-specific instructions, architecture, and documentation
 5. version-matched official documentation
-6. this repository's engineering defaults
-7. general community conventions
+6. relevant specialized skill instructions
+7. this repository's general engineering defaults
+8. broader community conventions
 
-This prevents reusable guidelines from accidentally overriding the reality of a production codebase.
-
----
-
-## Philosophy
-
-The common theme across these documents is simple:
-
-> Prefer the smallest architecture that preserves clear boundaries and can safely support the expected change.
-
-Good engineering is not measured by the number of abstractions, files, libraries, or patterns used. The result should be easier to understand, test, secure, operate, and change.
+This priority keeps reusable guidance useful without allowing it to damage a real project's established behavior.
 
 ---
 
-## Keeping the Repository Current
+# Repository Philosophy
 
-This is a living documentation repository. Framework, runtime, library, security, and deployment guidance should be reviewed as the ecosystem changes.
+The common idea behind the documentation and skills is simple:
 
-When updating the repository:
+> **Understand first. Choose deliberately. Change the smallest correct surface. Verify with evidence.**
 
-- prefer official, version-matched documentation
-- keep project-specific examples clearly identified as examples
-- avoid silently replacing working conventions with trends
-- distinguish stable production guidance from preview/canary features
-- update the root README whenever the repository structure or primary documentation changes
-- consolidate duplicated guidance over time rather than allowing contradictory rules to accumulate
+Good engineering is not measured by the number of abstractions, files, libraries, prompts, agents, or patterns involved.
+
+A good result should be easier to:
+
+- understand
+- verify
+- test
+- secure
+- review
+- operate
+- maintain
+- extend
+
+AI should reduce repeated work while preserving engineering judgment—not replace it.
 
 ---
 
-## Clone the Repository
+# Maintaining This Repository
+
+This is a living knowledge base. Documentation and skills should evolve as tools, frameworks, practices, and project needs change.
+
+When updating it:
+
+- prefer official and version-matched technical documentation
+- keep examples clearly identified as examples
+- keep project-specific decisions inside the project whenever possible
+- update reusable rules only when they are genuinely reusable
+- distinguish stable guidance from experimental guidance
+- keep skill instructions focused on one recognizable class of work
+- add references or tests when a skill becomes complex enough to need them
+- avoid duplicated or contradictory rules
+- update this root README when the repository structure or major entry points change
+
+---
+
+# Quick Start
+
+Clone the repository:
 
 ```bash
 git clone https://github.com/Mohamed-Leo/documentations.git
 cd documentations
 ```
 
-Then begin with:
+For general engineering work, begin with:
 
 ```text
 AGENTS.md
+```
+
+For a specialized AI workflow, browse:
+
+```text
+ai-skils/
+```
+
+For GitHub collaboration rules, open:
+
+```text
+gitHub-workflow/WORKFLOW.md
 ```
 
 ---
@@ -258,4 +375,4 @@ AGENTS.md
 
 Maintained by [Mohamed-Leo](https://github.com/Mohamed-Leo).
 
-This repository is primarily a personal engineering playbook published publicly for reuse, learning, and continuous improvement.
+This repository is a public engineering and AI-workflow knowledge base built for reuse, learning, consistency, and continuous improvement across software projects.
