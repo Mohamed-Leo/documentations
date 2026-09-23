@@ -83,6 +83,182 @@ documentations/
 
 ---
 
+
+# Install AI Skills Locally
+
+The `ai-skils/` directory is the source library for reusable AI-agent skills in this repository.  
+To make those skills available to local coding agents, install or link them into a shared local skills directory.
+
+> **Recommended local skills directory**
+>
+> - **Windows:** `%USERPROFILE%\.agents\skills`
+> - **macOS / Linux:** `~/.agents/skills`
+
+The exact discovery mechanism still depends on the AI tool you use. Some agents can discover this directory directly, while others may require an explicit configuration entry. Always check the documentation for your agent before assuming automatic discovery.
+
+## Option A — Copy or Sync Skills Locally
+
+This is the safest default for most developers because it keeps the repository and the local agent-skill directory separate.
+
+### Windows PowerShell
+
+From the cloned repository root:
+
+```powershell
+$source = Join-Path (Get-Location) "ai-skils"
+$destination = Join-Path $env:USERPROFILE ".agents\skills"
+
+New-Item -ItemType Directory -Force -Path $destination | Out-Null
+Copy-Item "$source\*" $destination -Recurse -Force
+```
+
+### macOS / Linux
+
+From the cloned repository root:
+
+```bash
+mkdir -p ~/.agents/skills
+cp -R ai-skils/. ~/.agents/skills/
+```
+
+This copies each skill package into the shared skills directory.
+
+## Option B — Link the Repository Skills Directory
+
+This is useful for maintainers or developers who want a `git pull` to immediately expose the newest skill definitions without running another copy step.
+
+### Windows PowerShell — Junction
+
+Run PowerShell with permission to create a junction:
+
+```powershell
+$repoSkills = (Resolve-Path ".\ai-skils").Path
+$agentRoot = Join-Path $env:USERPROFILE ".agents"
+
+New-Item -ItemType Directory -Force -Path $agentRoot | Out-Null
+New-Item -ItemType Junction -Path (Join-Path $agentRoot "skills") -Target $repoSkills
+```
+
+If `%USERPROFILE%\.agents\skills` already exists, back it up or remove it before creating the junction.
+
+### macOS / Linux — Symlink
+
+```bash
+mkdir -p ~/.agents
+ln -s "$(pwd)/ai-skils" ~/.agents/skills
+```
+
+If `~/.agents/skills` already exists, back it up or remove it before creating the symlink.
+
+## Expected Local Skill Structure
+
+After installation, the local structure should look like:
+
+```text
+.agents/
+└── skills/
+    ├── <skill-name>/
+    │   ├── SKILL.md
+    │   ├── references/      # optional
+    │   ├── tests/           # optional
+    │   └── SOURCES.md       # optional
+    └── ...
+```
+
+`SKILL.md` is the primary entry point for a skill. Supporting files are optional and depend on the workflow.
+
+## Verify the Installation
+
+### Windows PowerShell
+
+```powershell
+Get-ChildItem (Join-Path $env:USERPROFILE ".agents\skills")
+```
+
+To verify that individual skills contain their primary instruction file:
+
+```powershell
+Get-ChildItem (Join-Path $env:USERPROFILE ".agents\skills") -Directory |
+  ForEach-Object {
+    $skillFile = Join-Path $_.FullName "SKILL.md"
+    [PSCustomObject]@{
+      Skill = $_.Name
+      HasSkillFile = Test-Path $skillFile
+    }
+  }
+```
+
+### macOS / Linux
+
+```bash
+find ~/.agents/skills -maxdepth 2 -name SKILL.md -print
+```
+
+A correctly installed skill should expose its own `SKILL.md`.
+
+## Keep Skills Updated
+
+If you used the **copy/sync** approach:
+
+```bash
+git pull
+```
+
+Then run the copy step again.
+
+If you used the **junction/symlink** approach:
+
+```bash
+git pull
+```
+
+No additional copy is required because the agent directory points to the repository skill library.
+
+## How AI Agents Should Use Installed Skills
+
+Installing skills does not mean an agent should invoke every skill for every task.
+
+A good agent workflow is:
+
+1. Read the current task and project-local instructions first.
+2. Inspect the repository before making changes.
+3. Identify whether a relevant specialized skill exists.
+4. Read that skill's `SKILL.md` before implementation.
+5. Follow the skill's required process, checklists, and validation steps.
+6. Keep project-specific rules and explicit user requirements higher priority than reusable skills.
+7. Use the skill to improve judgment and execution—not to bypass repository context.
+8. Verify the result using the target project's own tests, linting, type checks, builds, and runtime checks.
+
+### Important priority rule
+
+Reusable skills are **supporting instructions**, not the highest authority.
+
+Use this order:
+
+1. Explicit user/task requirements.
+2. Security, privacy, legal, and data-integrity requirements.
+3. Project-specific `AGENTS.md`, `README`, architecture, and business rules.
+4. Version-matched official documentation.
+5. Relevant local skill instructions.
+6. General reusable guidance from this repository.
+
+## Agent Compatibility
+
+This repository intentionally keeps the skill format simple and file-based so it can be adapted to multiple AI coding tools.
+
+Before relying on automatic skill discovery:
+
+- confirm whether your agent supports local skills directly
+- confirm the directory it scans
+- confirm whether it needs a config file or plugin
+- confirm whether it loads skills globally or only per project
+- confirm whether skills are loaded automatically or must be explicitly invoked
+- prefer documented agent behavior over assumptions
+
+Do not copy tool-specific setup from another agent unless that tool documents compatible behavior.
+
+---
+
 # Core Documentation
 
 ## 1. Engineering Constitution — `AGENTS.md`
@@ -351,16 +527,30 @@ git clone https://github.com/Mohamed-Leo/documentations.git
 cd documentations
 ```
 
+Then choose the setup that matches what you need:
+
+1. Read `AGENTS.md` for the engineering baseline.
+2. Install or link `ai-skils/` into your local agent skills directory if you want reusable AI workflows available across projects.
+3. Use the target project's own instructions and architecture as the primary project context.
+4. Open `gitHub-workflow/WORKFLOW.md` when working through issues, branches, pull requests, reviews, and merges.
+5. Run the target project's real verification commands before considering work complete.
+
 For general engineering work, begin with:
 
 ```text
 AGENTS.md
 ```
 
-For a specialized AI workflow, browse:
+For reusable AI workflows, browse:
 
 ```text
 ai-skils/
+```
+
+For local AI-skill setup, see:
+
+```text
+Install AI Skills Locally
 ```
 
 For GitHub collaboration rules, open:
